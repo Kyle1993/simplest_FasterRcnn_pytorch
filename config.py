@@ -25,6 +25,9 @@ class Config:
     lr_decay = 0.1  # 1e-3 -> 1e-4
     lr = 1e-3
 
+    # for debug
+    use_hyperboard = False
+
 
     # visualization
     env = 'faster-rcnn'  # visdom env
