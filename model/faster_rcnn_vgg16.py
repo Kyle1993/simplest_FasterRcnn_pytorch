@@ -291,9 +291,15 @@ class FasterRCNNVGG16(nn.Module):
         cls_bbox[:,:, 0::2] = (cls_bbox[:,:, 0::2]).clamp(min=0, max=H)
         cls_bbox[:,:, 1::2] = (cls_bbox[:,:, 1::2]).clamp(min=0, max=W)
 
-        prob = F.softmax(utils.tovariable(roi_cls_score,volatile=True),dim=1)
-        label = torch.max(prob,dim=1)[1].data
+        prob = F.softmax(utils.tovariable(roi_cls_score,volatile=True),dim=1)   # shape:(n_roi,21)
+        label = torch.max(prob,dim=1)[1].data                                   # shape:(n_roi,)
+        # background mask
+        mask_label = np.where(label.cpu().numpy()!=0)
         bbox = torch.gather(cls_bbox, 1, label.view(-1, 1).unsqueeze(2).repeat(1, 1, 4)).squeeze(1)
+
+        # delete background
+        label = label.cpu().numpy()[mask_label]
+        bbox = bbox.cpu().numpy()[mask_label]
 
         return bbox,label
 

@@ -13,7 +13,7 @@ class Config:
     min_size = 600  # image resize
     max_size = 1000 # image resize
     num_workers = 8
-    gpu = 1
+    gpu = 0
     test_num_workers = 8
     n_class = 20+1
 
