@@ -39,8 +39,8 @@ class ProposalTargetCreator(object):
         self.neg_iou_thresh_lo = neg_iou_thresh_lo  # NOTE: py-faster-rcnn默认的值是0.1
 
     def __call__(self, roi, bbox, label,
-                 loc_normalize_mean=(0., 0., 0., 0.),
-                 loc_normalize_std=(0.1, 0.1, 0.2, 0.2)):
+                 loc_normalize_mean,
+                 loc_normalize_std):
         """Assigns ground truth to sampled proposals.
 
         This function samples total of :obj:`self.n_sample` RoIs
@@ -139,8 +139,7 @@ class ProposalTargetCreator(object):
         # Compute offsets and scales to match sampled RoIs to the GTs.
         # 计算4个修正量作为位置回归的ground truth
         gt_roi_loc = bbox2loc(sample_roi, bbox[gt_assignment[keep_index]])
-        gt_roi_loc = ((gt_roi_loc - np.array(loc_normalize_mean, np.float32)
-                       ) / np.array(loc_normalize_std, np.float32))
+        gt_roi_loc = (gt_roi_loc - loc_normalize_mean) / loc_normalize_std
 
         # 这里似乎并不能保证选取出来的sample_roi数目一定是128个,因为极端情况下可以有很多不符合条件的roi,即不能选作正样本也不能选做负样本
         # 具体训练时由于候选框很多,可能一般都能填满128吧
@@ -457,3 +456,6 @@ class ProposalCreator:
             keep = keep[:n_post_nms]
         roi = roi[keep]
         return roi
+
+if __name__ == '__main__':
+    pass

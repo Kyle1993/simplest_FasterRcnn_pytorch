@@ -125,42 +125,63 @@ class VOCBboxDataset:
                 for tag in ('ymin', 'xmin', 'ymax', 'xmax')])
             name = obj.find('name').text.lower().strip()
             label.append(VOC_BBOX_LABEL_NAMES.index(name))
-        bbox = np.stack(bbox).astype(np.float32)
+        original_bbox = np.stack(bbox).astype(np.float32)
         label = np.stack(label).astype(np.int32)
         # When `use_difficult==False`, all elements in `difficult` are False.
         difficult = np.array(difficult, dtype=np.bool).astype(np.uint8)  # PyTorch don't support np.bool
 
         # Load a image
         img_file = os.path.join(self.data_dir, 'JPEGImages', id_ + '.jpg')
-        img = dataset_utils.read_image(img_file, color=True)
+        original_img = dataset_utils.read_image(img_file, color=True)
+        # print(img.shape)
 
-        img, bbox, label, scale = dataset_utils.transform(img,bbox,label,self.opt.min_size,self.opt.max_size)  # 保证短边大于min或者长边小于max
+        img, bbox, label, scale, flip = dataset_utils.transform(original_img,original_bbox,label,self.opt.min_size,self.opt.max_size)  # 保证短边大于min或者长边小于max
 
-        return img.copy(), bbox.copy(), label.copy(), scale  # scale是transform的比例
+        return original_img, original_bbox, img.copy(), bbox.copy(), label.copy(), scale, flip  # scale是transform的比例,filp表示随机翻转
 
 
 if __name__ == '__main__':
     from config import opt
     from torch.utils.data import DataLoader
-    from PIL import Image,ImageDraw,ImageFont
-    train_dataset = VOCBboxDataset(opt)
+    train_dataset = VOCBboxDataset(opt,train=True)
     train_dataloader = DataLoader(train_dataset,batch_size=1,shuffle=True)
 
-    index = 10
-    img,bbox,label,scale = train_dataset[index]
-    print(type(img))
+    index = 30
+    oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
+    print(oimg.shape)
+    print(oimg)
+    print(img.shape)
+    print(scale)
+    print(obbox)
     print(bbox.shape)
-    print(bbox)
     print(label.shape)
-    font = ImageFont.load_default()
-    image = Image.fromarray(np.uint8(dataset_utils.inverse_normalize(img).transpose(1,2,0)*255))
-    draw = ImageDraw.Draw(image)
-    for i in range(bbox.shape[0]):
-        y_min,x_min,y_max,x_max = bbox[i]
-        draw.rectangle((x_min,y_min,x_max,y_max), outline=255)
-        draw.text((x_min, y_min), VOC_BBOX_LABEL_NAMES[label[i]],font=font)
-    image.show()
+    print(flip)
+    dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,dataset_utils.bbox_inverse(bbox,img.shape[1:],flip,scale),label,)
 
-    # for i,(img,bbox,label,scale) in enumerate(train_dataloader):
-    #     print(img.size(),label.size(),bbox.size(),scale)
+    # font = ImageFont.load_default()
+    # image = Image.fromarray(np.uint8(oimg.transpose(1,2,0)))
+    # draw = ImageDraw.Draw(image)
+    # obbox = dataset_utils.bbox_inverse(bbox,img.shape[1:],flip,scale)
+    # for i in range(obbox.shape[0]):
+    #     y_min,x_min,y_max,x_max = obbox[i]
+    #     draw.rectangle((x_min,y_min,x_max,y_max), outline='red')
+    #     draw.text((x_min, y_min), VOC_BBOX_LABEL_NAMES[label[i]],font=font)
+    # image.show()
+
+    # font = ImageFont.load_default()
+    # image = Image.fromarray(np.uint8(dataset_utils.inverse_normalize(img).transpose(1,2,0)*255))
+    # draw = ImageDraw.Draw(image)
+    # for i in range(bbox.shape[0]):
+    #     y_min,x_min,y_max,x_max = bbox[i]
+    #     draw.rectangle((x_min,y_min,x_max,y_max), outline=255)
+    #     draw.text((x_min, y_min), VOC_BBOX_LABEL_NAMES[label[i]],font=font)
+    # image.show()
+
+    # for i,(oimg,obbox,img,bbox,label,scale,flip) in enumerate(train_dataloader):
+    #     print(oimg.size(),obbox.size(),img.size(),label.size(),bbox.size(),scale,flip)
+    #     # print('-----')
+    #     # print(flip)
+    #
+    #     if i==0:
+    #         break
 

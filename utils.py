@@ -16,19 +16,19 @@ def totensor(data, cuda=True):
     if isinstance(data, np.ndarray):
         tensor = torch.from_numpy(data).float()
     if isinstance(data, torch._TensorBase):
-        tensor = data
+        tensor = data.float()
     if isinstance(data, torch.autograd.Variable):
-        tensor = data.data
+        tensor = data.data.float()
     if cuda:
         tensor = tensor.cuda(opt.gpu)
     return tensor
 
 
-def tovariable(data,cuda=True):
+def tovariable(data,cuda=True,volatile=False):
     if isinstance(data, np.ndarray):
         data = tovariable(totensor(data))
     if isinstance(data, torch._TensorBase):
-        data = torch.autograd.Variable(data.float())
+        data = torch.autograd.Variable(data.float(),volatile=volatile)
     if isinstance(data, torch.autograd.Variable):
         pass
     else:
@@ -223,7 +223,7 @@ def bbox_iou(bbox_a, bbox_b):
     area_b = np.prod(bbox_b[:, 2:] - bbox_b[:, :2], axis=1)
     return area_i / (area_a[:, None] + area_b - area_i)
 
-def nms(dets, thresh):
+def nms(dets, thresh, score=None):
     """Pure Python NMS baseline."""
     x1 = dets[:, 0]
     y1 = dets[:, 1]
@@ -233,8 +233,10 @@ def nms(dets, thresh):
 
     areas = (x2 - x1 + 1) * (y2 - y1 + 1)
     # 打分从大到小排列，取index
-    # order = scores.argsort()[::-1]
-    order = np.arange(len(dets))
+    if score==None:
+        order = np.arange(len(dets))
+    else:
+        order = score.argsort()[::-1]
     # keep为最后保留的边框
     keep = []
     while order.size > 0:

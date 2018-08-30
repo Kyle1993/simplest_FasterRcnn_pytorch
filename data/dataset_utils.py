@@ -43,36 +43,12 @@ def read_image(path, dtype=np.float32, color=True):
         return img.transpose((2, 0, 1))
 
 
-def resize_bbox(bbox, in_size, out_size):
-    """Resize bounding boxes according to image resize.
-
-    The bounding boxes are expected to be packed into a two dimensional
-    tensor of shape :math:`(R, 4)`, where :math:`R` is the number of
-    bounding boxes in the image. The second axis represents attributes of
-    the bounding box. They are :math:`(y_{min}, x_{min}, y_{max}, x_{max})`,
-    where the four attributes are coordinates of the top left and the
-    bottom right vertices.
-
-    Args:
-        bbox (~numpy.ndarray): An array whose shape is :math:`(R, 4)`.
-            :math:`R` is the number of bounding boxes.
-        in_size (tuple): A tuple of length 2. The height and the width
-            of the image before resized.
-        out_size (tuple): A tuple of length 2. The height and the width
-            of the image after resized.
-
-    Returns:
-        ~numpy.ndarray:
-        Bounding boxes rescaled according to the given image shapes.
-
-    """
+def resize_bbox(bbox, scale=1):
     bbox = bbox.copy()
-    y_scale = float(out_size[0]) / in_size[0]
-    x_scale = float(out_size[1]) / in_size[1]
-    bbox[:, 0] = y_scale * bbox[:, 0]
-    bbox[:, 2] = y_scale * bbox[:, 2]
-    bbox[:, 1] = x_scale * bbox[:, 1]
-    bbox[:, 3] = x_scale * bbox[:, 3]
+    bbox[:, 0] = scale * bbox[:, 0]
+    bbox[:, 2] = scale * bbox[:, 2]
+    bbox[:, 1] = scale * bbox[:, 1]
+    bbox[:, 3] = scale * bbox[:, 3]
     return bbox
 
 
@@ -90,7 +66,7 @@ def flip_bbox(bbox, size, y_flip=False, x_flip=False):
         bbox (~numpy.ndarray): An array whose shape is :math:`(R, 4)`.
             :math:`R` is the number of bounding boxes.
         size (tuple): A tuple of length 2. The height and the width
-            of the image before resized.
+            of the image after resized.
         y_flip (bool): Flip bounding box according to a vertical flip of
             an image.
         x_flip (bool): Flip bounding box according to a horizontal flip of
@@ -284,7 +260,7 @@ def random_flip(img, y_random=False, x_random=False,
         img = img.copy()
 
     if return_param:
-        return img, {'y_flip': y_flip, 'x_flip': x_flip}
+        return img, [x_flip,y_flip]
     else:
         return img
 
@@ -345,25 +321,55 @@ def preprocess(img, min_size=600, max_size=1000):
     scale = min(scale1, scale2)
     img = img / 255.
     img = sktsf.resize(img, (C, H * scale, W * scale), mode='reflect')
-    # both the longer and shorter should be less than
-    # max_size and min_size
-    return pytorch_normalze(img)
+    # both the longer and shorter should be less than max_size and min_size
+    # 保证长边小于max,同时短边小于min,并且至少有一个等于
+    return pytorch_normalze(img), scale
 
 
 def transform(img,bbox,label,min_size=600,max_size=1000):
 
-        _, H, W = img.shape
-        img = preprocess(img, min_size, max_size)
-        _, o_H, o_W = img.shape
-        scale = o_H / H
-        bbox = resize_bbox(bbox, (H, W), (o_H, o_W))
+    _, H, W = img.shape
+    img,scale = preprocess(img, min_size, max_size)
+    # _, o_H, o_W = img.shape
+    # scale = o_H / H
+    bbox = resize_bbox(bbox,scale)
 
-        # horizontally flip
-        img, params = random_flip(
-            img, x_random=True, return_param=True)
-        bbox = flip_bbox(
-            bbox, (o_H, o_W), x_flip=params['x_flip'])
+    # horizontally flip
+    img, filp = random_flip(img, x_random=True,y_random=True, return_param=True)
+    bbox = flip_bbox(bbox, (img.shape[1], img.shape[2]), x_flip=filp[0],y_flip=filp[1])
 
-        return img, bbox, label, scale
+    return img, bbox, label, scale, filp
+
+def bbox_inverse(bbox,size,flip,scale):
+    # inverse flip
+    obbox = flip_bbox(bbox,size,x_flip=flip[0],y_flip=flip[1])
+
+    # inverse resize
+    obbox[:, 0] = obbox[:, 0]/scale
+    obbox[:, 2] = obbox[:, 2]/scale
+    obbox[:, 1] = obbox[:, 1]/scale
+    obbox[:, 3] = obbox[:, 3]/scale
+
+    return obbox
+
+def draw_pic(original_img,VOC_BBOX_LABEL_NAMES,target_bbox,target_label,predict_bbox=None,predict_label=None):
+    from PIL import Image,ImageDraw,ImageFont
+    font = ImageFont.load_default()
+    image = Image.fromarray(np.uint8(original_img.transpose(1,2,0)))
+    draw = ImageDraw.Draw(image)
+
+    for i in range(target_bbox.shape[0]):
+        y_min,x_min,y_max,x_max = target_bbox[i]
+        draw.rectangle((x_min,y_min,x_max,y_max), outline='red')
+        draw.text((x_min, y_min), 'target_'+VOC_BBOX_LABEL_NAMES[target_label[i]],font=font)
+
+    if (not predict_bbox is None) and (not predict_label is None):
+        for i in range(predict_bbox.shape[0]):
+            y_min,x_min,y_max,x_max = predict_bbox[i]
+            draw.rectangle((x_min,y_min,x_max,y_max), outline='green')
+            draw.text((x_min, y_min), 'predict_'+VOC_BBOX_LABEL_NAMES[predict_label[i]],font=font)
+
+    image.show()
+
 
 

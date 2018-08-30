@@ -8,6 +8,7 @@ import utils
 from model.regin_proposal_network import RegionProposalNetwork
 from model.creator import ProposalTargetCreator,AnchorTargetCreator
 from collections import namedtuple
+import time
 
 LossTuple = namedtuple('LossTuple',
                        ['rpn_loc_loss',
@@ -74,16 +75,19 @@ class ROIHead(nn.Module):
         batch = batch.view(batch_size, -1)
         batch = self.classifier(batch)
         roi_cls_locs = self.cls_loc(batch)
-        roi_scores = self.score(batch)
-        return roi_cls_locs, roi_scores
+        roi_cls_scores = self.score(batch)
+        return roi_cls_locs, roi_cls_scores
 
 
 class FasterRCNNVGG16(nn.Module):
     def __init__(self,opt):
         super(FasterRCNNVGG16,self).__init__()
+        self.opt = opt
         self.rpn_sigma = opt.rpn_sigma
         self.roi_sigma = opt.roi_sigma
         self.lr = opt.lr
+        self.lr_decay = opt.lr_decay
+        self.n_class = opt.n_class
         self.weight_decay = opt.weight_decay
         self.use_adam = opt.use_adam
         self.gpu = opt.gpu
@@ -112,7 +116,7 @@ class FasterRCNNVGG16(nn.Module):
         del classifier[5]
         del classifier[2]
         classifier = nn.Sequential(*classifier)
-        self.roi_head = ROIHead(classifier,n_class=21,roi_size=(7,7),feat_stride=self.feat_stride)
+        self.roi_head = ROIHead(classifier,n_class=self.n_class,roi_size=(7,7),feat_stride=self.feat_stride)
 
         # init RPN
         self.rpn = RegionProposalNetwork(512, 512,ratios=self.ratios,anchor_scales=self.anchor_scales,feat_stride=self.feat_stride,)
@@ -120,8 +124,8 @@ class FasterRCNNVGG16(nn.Module):
         self.anchor_target_creator = AnchorTargetCreator()
         self.proposal_target_creator = ProposalTargetCreator()
 
-        self.loc_normalize_mean = (0., 0., 0., 0.),
-        self.loc_normalize_std = (0.1, 0.1, 0.2, 0.2)
+        self.loc_normalize_mean = np.array((0., 0., 0., 0.), np.float32)
+        self.loc_normalize_std = np.array((0.1, 0.1, 0.2, 0.2), np.float32)
 
         self.extractor.cuda(self.gpu)
         self.rpn.cuda(self.gpu)
@@ -218,7 +222,7 @@ class FasterRCNNVGG16(nn.Module):
         # ------------------ ROI 预测 -------------------#
         # 这里不需要对所有的ROI进行预测,所以在标注阶段确定了样本之后再进行预测
         # 得到候选区域sample_roi的预测分类roi_score和预测位置修正量roi_cls_loc
-        roi_cls_loc, roi_score = self.roi_head(
+        roi_cls_loc, roi_cls_score = self.roi_head(
             features,
             sample_roi)
 
@@ -238,7 +242,7 @@ class FasterRCNNVGG16(nn.Module):
             self.roi_sigma)
 
         # cls loss(分类loss,这里分21类)
-        roi_cls_loss = nn.CrossEntropyLoss()(roi_score, gt_roi_label.cuda(self.gpu))
+        roi_cls_loss = nn.CrossEntropyLoss()(roi_cls_score, gt_roi_label.cuda(self.gpu))
 
         # self.roi_cm.add(at.totensor(roi_score, False), gt_roi_label.data.long())
 
@@ -253,6 +257,46 @@ class FasterRCNNVGG16(nn.Module):
         self.optimizer.step()
 
         return LossTuple(*losses)
+
+    def predict(self,img, scale):
+        scale = utils.totensor(scale)
+        n = img.shape[0]
+        if n != 1:
+            raise ValueError('Currently only batch size 1 is supported.')
+
+        _, _, H, W = img.shape
+        img_size = (H, W)
+
+        # ------------------ 预测 -------------------#
+        img = utils.tovariable(img,volatile=True)
+        features = self.extractor(img)
+        rpn_loc, rpn_score, roi, _ = self.rpn(features, img_size, scale)
+        roi_cls_loc,roi_cls_score = self.roi_head(features,roi)
+
+        n_roi = roi.shape[0]
+        roi_cls_score = roi_cls_score.data
+        roi_cls_loc = roi_cls_loc.data.view(n_roi,self.n_class,4)
+        roi = utils.totensor(roi) / scale
+        mean = utils.totensor(self.loc_normalize_mean)
+        std = utils.totensor(self.loc_normalize_std)
+        # print(roi.size(),roi_cls_loc.size(),std.size(),mean.size())
+        roi_cls_loc = (roi_cls_loc * std + mean)
+
+        roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+        # print(roi.shape,roi_cls_loc.shape)
+        cls_bbox = utils.loc2bbox(utils.tonumpy(roi).reshape((-1, 4)),utils.tonumpy(roi_cls_loc).reshape((-1, 4)))
+        cls_bbox = utils.totensor(cls_bbox)
+        cls_bbox = cls_bbox.view(-1, self.n_class, 4)
+        # clip bounding box
+        cls_bbox[:,:, 0::2] = (cls_bbox[:,:, 0::2]).clamp(min=0, max=H)
+        cls_bbox[:,:, 1::2] = (cls_bbox[:,:, 1::2]).clamp(min=0, max=W)
+
+        prob = F.softmax(utils.tovariable(roi_cls_score,volatile=True),dim=1)
+        label = torch.max(prob,dim=1)[1].data
+        bbox = torch.gather(cls_bbox, 1, label.view(-1, 1).unsqueeze(2).repeat(1, 1, 4)).squeeze(1)
+
+        return bbox,label
+
 
     def _smooth_l1_loss(self,x, t, in_weight, sigma):
         sigma2 = sigma ** 2
@@ -278,6 +322,55 @@ class FasterRCNNVGG16(nn.Module):
         # Normalize by total number of negtive and positive rois.
         loc_loss /= (gt_label >= 0).sum()  # ignore gt_label==-1 for rpn_loss
         return loc_loss
+
+    def decay_lr(self, decay=0.1):
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] *= decay
+        return
+
+    def save(self, save_optimizer=False, save_path=None, **kwargs):
+        """serialize models include optimizer and other info
+        return path where the model-file is stored.
+
+        Args:
+            save_optimizer (bool): whether save optimizer.state_dict().
+            save_path (string): where to save model, if it's None, save_path
+                is generate using time str and info from kwargs.
+
+        Returns:
+            save_path(str): the path to save models.
+        """
+        save_dict = dict()
+
+        save_dict['model'] = {'extractor':self.extractor.state_dict(),'rpn':self.rpn.state_dict(),'roi_head':self.roi_head.state_dict()}
+        save_dict['config'] = self.opt._state_dict()
+
+        if save_optimizer:
+            save_dict['optimizer'] = self.optimizer.state_dict()
+
+        if save_path is None:
+            timestr = time.strftime('%m%d-%H%M')
+            save_path = 'checkpoints/fasterrcnn_%s.pth' % timestr
+
+        torch.save(save_dict, save_path)
+        return save_path
+
+    def load(self, path, load_optimizer=True, load_opt=True, ):
+        if not '/' in path:
+            path = 'checkpoints/'+path
+        state_dict = torch.load(path)
+        if 'model' in state_dict:
+            self.extractor.load_state_dict(state_dict['model']['extractor'])
+            self.rpn.load_state_dict(state_dict['model']['rpn'])
+            self.roi_head.load_state_dict(state_dict['model']['roi_head'])
+        else:  # legacy way, for backward compatibility
+            print('No Model Found')
+            raise NameError
+        if load_opt and 'config' in state_dict:
+            self.opt._parse(state_dict['config'])
+        if load_optimizer and 'optimizer' in state_dict:
+            self.optimizer.load_state_dict(state_dict['optimizer'])
+        return self
 
 
 
