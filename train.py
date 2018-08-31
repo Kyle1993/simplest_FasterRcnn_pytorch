@@ -32,14 +32,14 @@ for epoch in range(opt.epoch):
 
     for i,(original_img, original_bbox, img, bbox, label, scale, flip) in enumerate(train_dataloader):
         losses = model.train_step(img,bbox,label,scale)
-        print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(epoch, i,train_num,losses.total_loss.data[0]))
+        print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(epoch, i,train_num,losses.total_loss.item()))
 
         if opt.use_hyperboard:
-            agent.append(loss_record,i,losses.total_loss.data[0])
-            agent.append(rpn_loc_loss, i, losses.rpn_loc_loss.data[0])
-            agent.append(rpn_cls_loss, i, losses.rpn_cls_loss.data[0])
-            agent.append(roi_loc_loss, i, losses.roi_loc_loss.data[0])
-            agent.append(roi_cls_loss, i, losses.roi_cls_loss.data[0])
+            agent.append(loss_record,i,losses.total_loss.item())
+            agent.append(rpn_loc_loss, i, losses.rpn_loc_loss.item())
+            agent.append(rpn_cls_loss, i, losses.rpn_cls_loss.item())
+            agent.append(roi_loc_loss, i, losses.roi_loc_loss.item())
+            agent.append(roi_cls_loss, i, losses.roi_cls_loss.item())
 
         # # here can be delete
         # global_step += 1

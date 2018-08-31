@@ -137,7 +137,7 @@ class VOCBboxDataset:
 
         img, bbox, label, scale, flip = dataset_utils.transform(original_img,original_bbox,label,self.opt.min_size,self.opt.max_size)  # 保证短边大于min或者长边小于max
 
-        return original_img, original_bbox, img.copy(), bbox.copy(), label.copy(), scale, flip  # scale是transform的比例,filp表示随机翻转
+        return original_img, original_bbox, img.copy(), bbox.copy(), label.copy(), scale, np.array(flip,dtype=np.int)  # scale是transform的比例,filp表示随机翻转
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 from model.faster_rcnn_vgg16 import FasterRCNNVGG16
-from data.dataset import VOCBboxDataset
+from data.dataset import VOCBboxDataset,VOC_BBOX_LABEL_NAMES
 from torch.utils.data import DataLoader
+from data import dataset_utils
 
 from config import opt
 
@@ -32,4 +33,18 @@ model.save(save_optimizer=True)
 #
 #     if i==0:
 #         break
+
+# model.load('fasterrcnn_0831-1144.pth')
+# model.eval()
+# test_dataset = VOCBboxDataset(opt,train=False)
+# test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+# for i,(oimg, obbox, img, bbox, label, scale, flip) in enumerate(test_dataloader):
+#     predict_bbox,predict_label = model.predict(img,scale)
+#     # print(predict_bbox.shape)
+#     # predict_bbox = dataset_utils.bbox_inverse(predict_bbox,img.shape[2:],flip.squeeze().numpy(),scale)
+#     # dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,bbox,label,predict_bbox,predict_label)
+#     #
+#     # if i==0:
+#     #     break
+
 

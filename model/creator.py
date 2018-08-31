@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils import bbox2loc, bbox_iou, loc2bbox, nms
+import utils
 
 
 class ProposalTargetCreator(object):
@@ -29,8 +29,8 @@ class ProposalTargetCreator(object):
 
     def __init__(self,
                  n_sample=128,
-                 pos_ratio=0.25, pos_iou_thresh=0.5,
-                 neg_iou_thresh_hi=0.5, neg_iou_thresh_lo=0.0
+                 pos_ratio=0.8, pos_iou_thresh=0.4,
+                 neg_iou_thresh_hi=0.3, neg_iou_thresh_lo=0.1
                  ):
         self.n_sample = n_sample
         self.pos_ratio = pos_ratio
@@ -96,7 +96,7 @@ class ProposalTargetCreator(object):
 
         pos_roi_per_image = np.round(self.n_sample * self.pos_ratio)  # 采样的正样本数量
         # 每个roi对应每个bbox的IOU
-        iou = bbox_iou(roi, bbox)
+        iou = utils.bbox_iou(roi, bbox)
 
         # 每个roi对应iou最大的bbox的index
         gt_assignment = iou.argmax(axis=1)
@@ -138,7 +138,7 @@ class ProposalTargetCreator(object):
 
         # Compute offsets and scales to match sampled RoIs to the GTs.
         # 计算4个修正量作为位置回归的ground truth
-        gt_roi_loc = bbox2loc(sample_roi, bbox[gt_assignment[keep_index]])
+        gt_roi_loc = utils.bbox2loc(sample_roi, bbox[gt_assignment[keep_index]])
         gt_roi_loc = (gt_roi_loc - loc_normalize_mean) / loc_normalize_std
 
         # 这里似乎并不能保证选取出来的sample_roi数目一定是128个,因为极端情况下可以有很多不符合条件的roi,即不能选作正样本也不能选做负样本
@@ -173,7 +173,7 @@ class AnchorTargetCreator(object):
 
     def __init__(self,
                  n_sample=256,
-                 pos_iou_thresh=0.7, neg_iou_thresh=0.3,
+                 pos_iou_thresh=0.6, neg_iou_thresh=0.2,
                  pos_ratio=0.5):
         self.n_sample = n_sample
         self.pos_iou_thresh = pos_iou_thresh
@@ -225,7 +225,7 @@ class AnchorTargetCreator(object):
 
         # compute bounding box regression targets
         # 将位置框转换为修正值，作为回归目标
-        loc = bbox2loc(anchor, bbox[argmax_ious])
+        loc = utils.bbox2loc(anchor, bbox[argmax_ious])
 
         # map up to original set of anchors
         # 由于RPN网络生成了所有anchor(9*hh*ww个)的预测,所以这里也生成所有anchor的目标
@@ -274,7 +274,7 @@ class AnchorTargetCreator(object):
 
     def _calc_ious(self, anchor, bbox, inside_index):
         # ious between the anchors and the gt boxes
-        ious = bbox_iou(anchor, bbox)                               # [nanchor,nbbox],以下的最接近表示IOU最大
+        ious = utils.bbox_iou(anchor, bbox)                         # [nanchor,nbbox],以下的最接近表示IOU最大
         argmax_ious = ious.argmax(axis=1)                           # 每个anchor,与其最接近的bbox的索引,[nanchor,]
         max_ious = ious[np.arange(len(inside_index)), argmax_ious]  # 每个anchor,与其最接近的bbox的IOU值,[nanchor,]
         gt_argmax_ious = ious.argmax(axis=0)                        # 每个bbox,与其最接近的anchor的索引,[nbbox,]
@@ -355,17 +355,13 @@ class ProposalCreator:
     def __init__(self,
                  parent_model,
                  nms_thresh=0.7,
-                 n_train_pre_nms=12000,
                  n_train_post_nms=2000,
-                 n_test_pre_nms=6000,
                  n_test_post_nms=300,
                  min_size=16
                  ):
         self.parent_model = parent_model
         self.nms_thresh = nms_thresh
-        self.n_train_pre_nms = n_train_pre_nms
         self.n_train_post_nms = n_train_post_nms
-        self.n_test_pre_nms = n_test_pre_nms
         self.n_test_post_nms = n_test_post_nms
         self.min_size = min_size
 
@@ -409,16 +405,14 @@ class ProposalCreator:
         # faster_rcnn.eval()
         # to set self.traing = False
         if self.parent_model.training:
-            n_pre_nms = self.n_train_pre_nms
             n_post_nms = self.n_train_post_nms
         else:
-            n_pre_nms = self.n_test_pre_nms
             n_post_nms = self.n_test_post_nms
 
         # Convert anchors into proposal via bbox transformations.
         # 根据anchor_bbox和他的修正量loc生成修正后的bbox
         # roi:[n_anchor,4]
-        roi = loc2bbox(anchor, loc)
+        roi = utils.loc2bbox(anchor, loc)
 
         # Clip predicted boxes to image.
         # 将roi的边界clip成原始图像边界
@@ -440,10 +434,10 @@ class ProposalCreator:
         # Take top pre_nms_topN (e.g. 6000).
         # order是score按降序排列后的index
         # 获得到的是score前n_pre_nms大的roi
-        order = score.ravel().argsort()[::-1]
-        if n_pre_nms > 0:
-            order = order[:n_pre_nms]
-        roi = roi[order, :]
+        # order = score.ravel().argsort()[::-1]
+        # if n_pre_nms > 0:
+        #     order = order[:n_pre_nms]
+        # roi = roi[order, :]
 
         # Apply nms (e.g. threshold = 0.7).
         # Take after_nms_topN (e.g. 300).
@@ -451,7 +445,7 @@ class ProposalCreator:
         # unNOTE: somthing is wrong here!
         # TODO: remove cuda.to_gpu
         # 非最大值抑制 合并anchor,选取最大的n_post_nms个作为最终的roi
-        keep = nms(np.ascontiguousarray(np.asarray(roi)),thresh=self.nms_thresh)
+        keep = utils.nms(np.ascontiguousarray(np.asarray(roi)),score=score,thresh=self.nms_thresh)
         if n_post_nms > 0:
             keep = keep[:n_post_nms]
         roi = roi[keep]

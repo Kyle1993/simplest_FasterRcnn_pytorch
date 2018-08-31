@@ -188,6 +188,8 @@ class FasterRCNNVGG16(nn.Module):
             anchor,
             img_size)
         gt_rpn_label = utils.tovariable(gt_rpn_label).long()
+        # print('RPN positive:negitive')
+        # print(len(np.where(gt_rpn_label.cpu().data.numpy()==1)[0]),len(np.where(gt_rpn_label.cpu().data.numpy()==0)[0]))
         gt_rpn_loc = utils.tovariable(gt_rpn_loc)
 
         # ------------------ RPN losses 计算 -------------------#
@@ -216,6 +218,8 @@ class FasterRCNNVGG16(nn.Module):
             utils.tonumpy(label),
             self.loc_normalize_mean,
             self.loc_normalize_std)
+        # print('ROI foreground:backgroud')
+        # print(len(np.where(gt_roi_label!=0)[0]),len(np.where(gt_roi_label==0)[0]))
         # NOTE it's all zero because now it only support for batch=1 now(这里解释了上面的疑问)
         # sample_roi_index = torch.zeros(len(sample_roi))
 
@@ -292,9 +296,11 @@ class FasterRCNNVGG16(nn.Module):
         cls_bbox[:,:, 1::2] = (cls_bbox[:,:, 1::2]).clamp(min=0, max=W)
 
         prob = F.softmax(utils.tovariable(roi_cls_score,volatile=True),dim=1)   # shape:(n_roi,21)
+        # print(prob)
         label = torch.max(prob,dim=1)[1].data                                   # shape:(n_roi,)
         # background mask
-        mask_label = np.where(label.cpu().numpy()!=0)
+        mask_label = np.where(label.cpu().numpy()!=0)[0]
+        # print(label.cpu().numpy())
         bbox = torch.gather(cls_bbox, 1, label.view(-1, 1).unsqueeze(2).repeat(1, 1, 4)).squeeze(1)
 
         # delete background
@@ -326,7 +332,7 @@ class FasterRCNNVGG16(nn.Module):
         in_weight[(gt_label > 0).view(-1, 1).expand_as(in_weight).cuda(self.gpu)] = 1
         loc_loss = self._smooth_l1_loss(pred_loc, gt_loc, Variable(in_weight), sigma)
         # Normalize by total number of negtive and positive rois.
-        loc_loss /= (gt_label >= 0).sum()  # ignore gt_label==-1 for rpn_loss
+        loc_loss /= (gt_label >= 0).sum().float()  # ignore gt_label==-1 for rpn_loss
         return loc_loss
 
     def decay_lr(self, decay=0.1):

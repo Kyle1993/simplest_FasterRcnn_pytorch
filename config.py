@@ -30,22 +30,15 @@ class Config:
     # for debug
     use_hyperboard = True
 
-
-    # visualization
-    env = 'faster-rcnn'  # visdom env
-    port = 8097
-    plot_every = 40  # vis every N iter
-
     # preset
     data = 'voc'
     pretrained_model = 'vgg16'
 
     # training
-    epoch = 6
+    epoch = 1
 
 
-    use_adam = False # Use Adam optimizer
-    use_chainer = False # try match everything as chainer
+    use_adam = True # Use Adam optimizer
     use_drop = False # use dropout in RoIHead
     # debug
     debug_file = '/tmp/debugf'
