@@ -156,7 +156,7 @@ class FasterRCNNVGG16(nn.Module):
 
         # extractor在这里是VGG16的前10层,通过extractor可以提取feature_map
         # print(img)
-        img = utils.tovariable(img)
+        img = utils.totensor(img)
         features = self.extractor(img)
 
         # ------------------ RPN Network -------------------#
@@ -187,10 +187,10 @@ class FasterRCNNVGG16(nn.Module):
             utils.tonumpy(bbox),
             anchor,
             img_size)
-        gt_rpn_label = utils.tovariable(gt_rpn_label).long()
+        gt_rpn_label = utils.totensor(gt_rpn_label).long()
         # print('RPN positive:negitive')
         # print('RPN samples:{}\t{}'.format(len(np.where(gt_rpn_label.cpu().data.numpy()==1)[0]),len(np.where(gt_rpn_label.cpu().data.numpy()==0)[0])))
-        gt_rpn_loc = utils.tovariable(gt_rpn_loc)
+        gt_rpn_loc = utils.totensor(gt_rpn_loc)
 
         # ------------------ RPN losses 计算 -------------------#
         # loc loss(位置回归loss)
@@ -235,8 +235,8 @@ class FasterRCNNVGG16(nn.Module):
         # roi_cls_loc得到的是对每个类的坐标的预测,但是真正的loss计算只需要在ground truth上的类的位置预测
         # roi_loc就是在ground truth上的类的位置预测
         roi_loc = roi_cls_loc[torch.arange(0, n_sample).long().cuda(self.gpu), utils.totensor(gt_roi_label).long()]  # [m_sample.4]
-        gt_roi_label = utils.tovariable(gt_roi_label).long()
-        gt_roi_loc = utils.tovariable(gt_roi_loc)
+        gt_roi_label = utils.totensor(gt_roi_label).long()
+        gt_roi_loc = utils.totensor(gt_roi_loc)
 
         # loc loss(位置回归loss)
         roi_loc_loss = self._fast_rcnn_loc_loss(
@@ -263,7 +263,6 @@ class FasterRCNNVGG16(nn.Module):
         return LossTuple(*losses)
 
     def predict(self,img, scale):
-        scale = utils.totensor(scale)
         n = img.shape[0]
         if n != 1:
             raise ValueError('Currently only batch size 1 is supported.')
@@ -272,40 +271,42 @@ class FasterRCNNVGG16(nn.Module):
         img_size = (H, W)
 
         # ------------------ 预测 -------------------#
-        img = utils.tovariable(img,volatile=True)
-        features = self.extractor(img)
-        rpn_loc, rpn_score, roi, _ = self.rpn(features, img_size, scale)
-        roi_cls_loc,roi_cls_score = self.roi_head(features,roi)
+        with torch.no_grad():
+            scale = utils.totensor(scale)
+            img = utils.totensor(img)
+            features = self.extractor(img)
+            rpn_loc, rpn_score, roi, _ = self.rpn(features, img_size, scale)
+            roi_cls_loc,roi_cls_score = self.roi_head(features,roi)
 
-        n_roi = roi.shape[0]
-        roi_cls_score = roi_cls_score.data
-        roi_cls_loc = roi_cls_loc.data.view(n_roi,self.n_class,4)
-        roi = utils.totensor(roi) / scale
-        mean = utils.totensor(self.loc_normalize_mean)
-        std = utils.totensor(self.loc_normalize_std)
-        # print(roi.size(),roi_cls_loc.size(),std.size(),mean.size())
-        roi_cls_loc = (roi_cls_loc * std + mean)
+            n_roi = roi.shape[0]
+            roi_cls_score = roi_cls_score.data
+            roi_cls_loc = roi_cls_loc.data.view(n_roi,self.n_class,4)
+            roi = utils.totensor(roi) / scale
+            mean = utils.totensor(self.loc_normalize_mean)
+            std = utils.totensor(self.loc_normalize_std)
+            # print(roi.size(),roi_cls_loc.size(),std.size(),mean.size())
+            roi_cls_loc = (roi_cls_loc * std + mean)
 
-        roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
-        # print(roi.shape,roi_cls_loc.shape)
-        cls_bbox = utils.loc2bbox(utils.tonumpy(roi).reshape((-1, 4)),utils.tonumpy(roi_cls_loc).reshape((-1, 4)))
-        cls_bbox = utils.totensor(cls_bbox)
-        cls_bbox = cls_bbox.view(-1, self.n_class, 4)
-        # clip bounding box
-        cls_bbox[:,:, 0::2] = (cls_bbox[:,:, 0::2]).clamp(min=0, max=H)
-        cls_bbox[:,:, 1::2] = (cls_bbox[:,:, 1::2]).clamp(min=0, max=W)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            # print(roi.shape,roi_cls_loc.shape)
+            cls_bbox = utils.loc2bbox(utils.tonumpy(roi).reshape((-1, 4)),utils.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = utils.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class, 4)
+            # clip bounding box
+            cls_bbox[:,:, 0::2] = (cls_bbox[:,:, 0::2]).clamp(min=0, max=H)
+            cls_bbox[:,:, 1::2] = (cls_bbox[:,:, 1::2]).clamp(min=0, max=W)
 
-        prob = F.softmax(utils.tovariable(roi_cls_score,volatile=True),dim=1)   # shape:(n_roi,21)
-        # print(prob)
-        label = torch.max(prob,dim=1)[1].data                                   # shape:(n_roi,)
-        # background mask
-        mask_label = np.where(label.cpu().numpy()!=0)[0]
-        # print(label.cpu().numpy())
-        bbox = torch.gather(cls_bbox, 1, label.view(-1, 1).unsqueeze(2).repeat(1, 1, 4)).squeeze(1)
+            prob = F.softmax(utils.totensor(roi_cls_score),dim=1)   # shape:(n_roi,21)
+            # print(prob)
+            label = torch.max(prob,dim=1)[1].data                                   # shape:(n_roi,)
+            # background mask
+            mask_label = np.where(label.cpu().numpy()!=0)[0]
+            # print(label.cpu().numpy())
+            bbox = torch.gather(cls_bbox, 1, label.view(-1, 1).unsqueeze(2).repeat(1, 1, 4)).squeeze(1)
 
-        # delete background
-        label = label.cpu().numpy()[mask_label]
-        bbox = bbox.cpu().numpy()[mask_label]
+            # delete background
+            label = label.cpu().numpy()[mask_label]
+            bbox = bbox.cpu().numpy()[mask_label]
 
         return bbox,label
 

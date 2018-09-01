@@ -31,20 +31,20 @@ class Config:
     use_hyperboard = True
 
     # preset
-    data = 'voc'
-    pretrained_model = 'vgg16'
+    # data = 'voc'
+    # pretrained_model = 'vgg16'
 
     # training
     epoch = 1
 
 
-    use_adam = True # Use Adam optimizer
+    use_adam = True  # Use Adam optimizer
     use_drop = False # use dropout in RoIHead
     # debug
-    debug_file = '/tmp/debugf'
+    # debug_file = '/tmp/debugf'
 
-    test_num = 10000
-    # model
+    # test_num = 10000
+    # # model
     load_path = None
 
     # caffe_pretrain = False # use caffe pretrained model instead of torchvision

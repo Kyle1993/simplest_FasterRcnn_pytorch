@@ -14,15 +14,17 @@ model = FasterRCNNVGG16(opt)
 # train_num = len(train_dataset)
 # train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 #
-# print('    foreground  background')
+# # print('    foreground  background')
 # for i,(oimg, obbox, img, bbox, label, scale, flip) in enumerate(train_dataloader):
-#     print('------------------------')
+#     # print('------------------------')
 #     losses = model.train_step(img,bbox,label,scale)
-#     # print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(0, i,train_num,losses.total_loss.data[0]))
+#     print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(0, i,train_num,losses.total_loss.item()))
+#     if i==2:
+#         break
 #
 # model.save(save_optimizer=True)
 
-model.load('fasterrcnn_0901-1413.pth')
+model.load('fasterrcnn_0902-0118.pth')
 model.eval()
 test_dataset = VOCBboxDataset(opt,train=False)
 test_num = len(test_dataset)

@@ -27,19 +27,19 @@ def totensor(data, cuda=True):
         tensor = tensor.cuda(opt.gpu)
     return tensor
 
-
-def tovariable(data,cuda=True,volatile=False):
-    if isinstance(data, np.ndarray):
-        data = tovariable(totensor(data))
-    if isinstance(data, torch.Tensor):
-        data = torch.autograd.Variable(data.float(),volatile=volatile)
-    if isinstance(data, torch.autograd.Variable):
-        pass
-    else:
-        raise ValueError("UnKnow data type: %s, input should be {np.ndarray,Tensor,Variable}" %type(data))
-    if cuda:
-        data = data.cuda(opt.gpu)
-    return data
+# No longer needed in Pytorch 0.4+
+# def tovariable(data,cuda=True):
+#     if isinstance(data, np.ndarray):
+#         data = tovariable(totensor(data))
+#     if isinstance(data, torch.Tensor):
+#         data = torch.autograd.Variable(data.float())
+#     if isinstance(data, torch.autograd.Variable):
+#         pass
+#     else:
+#         raise ValueError("UnKnow data type: %s, input should be {np.ndarray,Tensor,Variable}" %type(data))
+#     if cuda:
+#         data = data.cuda(opt.gpu)
+#     return data
 
 def scalar(data):
     if isinstance(data, np.ndarray):
