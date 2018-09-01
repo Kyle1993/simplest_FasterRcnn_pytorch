@@ -22,6 +22,7 @@ model = FasterRCNNVGG16(opt)
 import numpy as np
 import pickle
 global_step = 0
+record_step = 10
 ls = np.zeros((5))
 ls_record = {}
 
@@ -34,26 +35,27 @@ for epoch in range(opt.epoch):
         losses = model.train_step(img,bbox,label,scale)
         print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(epoch, i,train_num,losses.total_loss.item()))
 
-        if opt.use_hyperboard:
-            agent.append(loss_record,i,losses.total_loss.item())
-            agent.append(rpn_loc_loss, i, losses.rpn_loc_loss.item())
-            agent.append(rpn_cls_loss, i, losses.rpn_cls_loss.item())
-            agent.append(roi_loc_loss, i, losses.roi_loc_loss.item())
-            agent.append(roi_cls_loss, i, losses.roi_cls_loss.item())
+        # here can be delete
+        global_step += 1
+        ls[0] += losses.rpn_loc_loss.item()
+        ls[1] += losses.rpn_cls_loss.item()
+        ls[2] += losses.roi_loc_loss.item()
+        ls[3] += losses.roi_cls_loss.item()
+        ls[4] += losses.total_loss.item()
 
-        # # here can be delete
-        # global_step += 1
-        # ls[0] += losses.rpn_loc_loss.data[0]
-        # ls[1] += losses.rpn_cls_loss.data[0]
-        # ls[2] += losses.roi_loc_loss.data[0]
-        # ls[3] += losses.roi_cls_loss.data[0]
-        # ls[4] += losses.total_loss.data[0]
-        #
-        # if global_step%10 == 0:
-        #     ls_record[global_step] = ls/10
-        #     ls = np.zeros((5))
-        #     with open('losses_record.pkl','wb') as f:
-        #         pickle.dump(ls_record,f)
+        if global_step%record_step == 0:
+            ls_record[global_step] = ls/record_step
+            ls = np.zeros((5))
+            with open('losses_record.pkl','wb') as f:
+                pickle.dump(ls_record,f)
+
+            if opt.use_hyperboard:
+                agent.append(rpn_loc_loss, global_step, ls_record[global_step][0])
+                agent.append(rpn_cls_loss, global_step, ls_record[global_step][1])
+                agent.append(roi_loc_loss, global_step, ls_record[global_step][2])
+                agent.append(roi_cls_loss, global_step, ls_record[global_step][3])
+                agent.append(loss_record, global_step, ls_record[global_step][4])
+
 
     if epoch == 2:
         model.decay_lr(opt.lr_decay)

@@ -14,9 +14,11 @@ train_dataset = VOCBboxDataset(opt)
 train_num = len(train_dataset)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 
+print('    foreground  background')
 for i,(oimg, obbox, img, bbox, label, scale, flip) in enumerate(train_dataloader):
+    print('------------------------')
     losses = model.train_step(img,bbox,label,scale)
-    print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(0, i,train_num,losses.total_loss.data[0]))
+    # print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(0, i,train_num,losses.total_loss.data[0]))
 
 model.save(save_optimizer=True)
 
@@ -34,12 +36,13 @@ model.save(save_optimizer=True)
 #     if i==0:
 #         break
 
-# model.load('fasterrcnn_0831-1144.pth')
+# model.load('fasterrcnn_0831-2101.pth')
 # model.eval()
 # test_dataset = VOCBboxDataset(opt,train=False)
 # test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 # for i,(oimg, obbox, img, bbox, label, scale, flip) in enumerate(test_dataloader):
 #     predict_bbox,predict_label = model.predict(img,scale)
+#     print('foreground:background')
 #     # print(predict_bbox.shape)
 #     # predict_bbox = dataset_utils.bbox_inverse(predict_bbox,img.shape[2:],flip.squeeze().numpy(),scale)
 #     # dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,bbox,label,predict_bbox,predict_label)

@@ -189,7 +189,7 @@ class FasterRCNNVGG16(nn.Module):
             img_size)
         gt_rpn_label = utils.tovariable(gt_rpn_label).long()
         # print('RPN positive:negitive')
-        # print(len(np.where(gt_rpn_label.cpu().data.numpy()==1)[0]),len(np.where(gt_rpn_label.cpu().data.numpy()==0)[0]))
+        # print('RPN samples:{}\t{}'.format(len(np.where(gt_rpn_label.cpu().data.numpy()==1)[0]),len(np.where(gt_rpn_label.cpu().data.numpy()==0)[0])))
         gt_rpn_loc = utils.tovariable(gt_rpn_loc)
 
         # ------------------ RPN losses 计算 -------------------#
@@ -219,7 +219,7 @@ class FasterRCNNVGG16(nn.Module):
             self.loc_normalize_mean,
             self.loc_normalize_std)
         # print('ROI foreground:backgroud')
-        # print(len(np.where(gt_roi_label!=0)[0]),len(np.where(gt_roi_label==0)[0]))
+        # print('ROI samples:{}\t{}'.format(len(np.where(gt_roi_label!=0)[0]),len(np.where(gt_roi_label==0)[0])))
         # NOTE it's all zero because now it only support for batch=1 now(这里解释了上面的疑问)
         # sample_roi_index = torch.zeros(len(sample_roi))
 
@@ -296,7 +296,7 @@ class FasterRCNNVGG16(nn.Module):
         cls_bbox[:,:, 1::2] = (cls_bbox[:,:, 1::2]).clamp(min=0, max=W)
 
         prob = F.softmax(utils.tovariable(roi_cls_score,volatile=True),dim=1)   # shape:(n_roi,21)
-        # print(prob)
+        print(prob)
         label = torch.max(prob,dim=1)[1].data                                   # shape:(n_roi,)
         # background mask
         mask_label = np.where(label.cpu().numpy()!=0)[0]

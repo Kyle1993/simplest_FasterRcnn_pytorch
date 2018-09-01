@@ -29,6 +29,8 @@ class ProposalTargetCreator(object):
 
     def __init__(self,
                  n_sample=128,
+                 # pos_ratio=0.25, pos_iou_thresh=0.5,
+                 # neg_iou_thresh_hi=0.5, neg_iou_thresh_lo=0.0
                  pos_ratio=0.8, pos_iou_thresh=0.4,
                  neg_iou_thresh_hi=0.3, neg_iou_thresh_lo=0.1
                  ):
@@ -174,6 +176,7 @@ class AnchorTargetCreator(object):
     def __init__(self,
                  n_sample=256,
                  pos_iou_thresh=0.6, neg_iou_thresh=0.2,
+                 # pos_iou_thresh=0.7, neg_iou_thresh=0.3,
                  pos_ratio=0.5):
         self.n_sample = n_sample
         self.pos_iou_thresh = pos_iou_thresh
@@ -240,8 +243,7 @@ class AnchorTargetCreator(object):
         label = np.empty((len(inside_index),), dtype=np.int32)
         label.fill(-1)
 
-        argmax_ious, max_ious, gt_argmax_ious = \
-            self._calc_ious(anchor, bbox, inside_index)
+        argmax_ious, max_ious, gt_argmax_ious = self._calc_ious(anchor, bbox, inside_index)
 
         # assign negative labels first so that positive labels can clobber them
         label[max_ious < self.neg_iou_thresh] = 0
@@ -274,7 +276,7 @@ class AnchorTargetCreator(object):
 
     def _calc_ious(self, anchor, bbox, inside_index):
         # ious between the anchors and the gt boxes
-        ious = utils.bbox_iou(anchor, bbox)                         # [nanchor,nbbox],以下的最接近表示IOU最大
+        ious = utils.bbox_iou(anchor, bbox)                               # [nanchor,nbbox],以下的最接近表示IOU最大
         argmax_ious = ious.argmax(axis=1)                           # 每个anchor,与其最接近的bbox的索引,[nanchor,]
         max_ious = ious[np.arange(len(inside_index)), argmax_ious]  # 每个anchor,与其最接近的bbox的IOU值,[nanchor,]
         gt_argmax_ious = ious.argmax(axis=0)                        # 每个bbox,与其最接近的anchor的索引,[nbbox,]
@@ -355,8 +357,8 @@ class ProposalCreator:
     def __init__(self,
                  parent_model,
                  nms_thresh=0.7,
-                 n_train_post_nms=2000,
-                 n_test_post_nms=300,
+                 n_train_post_nms=300,
+                 n_test_post_nms=30,
                  min_size=16
                  ):
         self.parent_model = parent_model
