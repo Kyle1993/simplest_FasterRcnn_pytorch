@@ -181,8 +181,8 @@ class RegionProposalNetwork(nn.Module):
         # 这里改了一下源代码,score上加了softmax,虽然loss的计算会自带softmax,但是要用fg_scroe算roi,所以还是觉得家softmax好
         rpn_scores = self.score(h)
         rpn_scores = rpn_scores.permute(0, 2, 3, 1).contiguous()
-        rpn_scores = F.softmax(rpn_scores.view(n, hh, ww, n_anchor, 2),dim=4)
-        rpn_fg_scores = rpn_scores[:, :, :, :, 1].contiguous()
+        rpn_scores_softmax = F.softmax(rpn_scores.view(n, hh, ww, n_anchor, 2),dim=4)
+        rpn_fg_scores = rpn_scores_softmax[:, :, :, :, 1].contiguous()
         # 前景(是物体)概率:[1,9*hh*ww]
         rpn_fg_scores = rpn_fg_scores.view(n, -1)
         # 二分类概率:[1,9*hh*ww,2]
