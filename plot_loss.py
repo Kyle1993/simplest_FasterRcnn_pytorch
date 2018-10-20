@@ -5,6 +5,7 @@ import numpy as np
 with open('losses_record.pkl', 'rb') as f:
     losses = pickle.load(f)
 
+
 losses_sort = sorted(losses.items(),key=lambda x:x[0])
 x = [item[0] for item in losses_sort]
 y = [item[1] for item in losses_sort]
@@ -15,7 +16,7 @@ roi_loc_loss = y[:,2]
 roi_cls_loss = y[:,3]
 total_loss = y[:,4]
 
-window_smooth = 20
+window_smooth = 1
 
 sx = []
 srpn_loc_loss = []
@@ -31,10 +32,10 @@ for i in range(len(x)//window_smooth):
     sroi_cls_loss.append(roi_cls_loss[i * window_smooth:(i + 1) * window_smooth].mean())
     stotal_loss.append(total_loss[i * window_smooth:(i + 1) * window_smooth].mean())
 
-#plt.plot(sx,srpn_loc_loss)
-# plt.plot(sx,srpn_cls_loss)
+plt.plot(sx,srpn_loc_loss)
+plt.plot(sx,srpn_cls_loss)
 plt.plot(sx,sroi_loc_loss)
-# plt.plot(sx,sroi_cls_loss)
-# plt.plot(sx,stotal_loss)
+plt.plot(sx,sroi_cls_loss)
+plt.plot(sx,stotal_loss)
 
 plt.show()

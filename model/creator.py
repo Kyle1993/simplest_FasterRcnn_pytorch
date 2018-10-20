@@ -447,7 +447,7 @@ class ProposalCreator:
         # unNOTE: somthing is wrong here!
         # TODO: remove cuda.to_gpu
         # 非最大值抑制 合并anchor,选取最大的n_post_nms个作为最终的roi
-        keep = utils.nms(np.ascontiguousarray(np.asarray(roi)),score=score,thresh=self.nms_thresh)
+        keep = utils.nms(np.ascontiguousarray(np.asarray(roi)),scores=score,threshold=self.nms_thresh)
         if n_post_nms > 0:
             keep = keep[:n_post_nms]
         roi = roi[keep]
