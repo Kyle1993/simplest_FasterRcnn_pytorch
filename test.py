@@ -24,7 +24,7 @@ model = FasterRCNNVGG16(opt)
 #
 # model.save(save_optimizer=True)
 
-model.load('fasterrcnn_0905-2130.pth')
+model.load('fasterrcnn_1020-1732.pth',target_gpu=1)
 model.eval()
 test_dataset = VOCBboxDataset(opt,train=False)
 test_num = len(test_dataset)

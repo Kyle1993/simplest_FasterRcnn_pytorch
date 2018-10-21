@@ -368,14 +368,18 @@ class FasterRCNNVGG16(nn.Module):
         torch.save(save_dict, save_path)
         return save_path
 
-    def load(self, path, load_optimizer=True, load_opt=True, ):
+    def load(self, path, target_gpu=0, load_optimizer=False, load_opt=True, ):
         if not '/' in path:
             path = 'checkpoints/'+path
         state_dict = torch.load(path)
+        state_dict['config']['gpu'] = target_gpu
         if 'model' in state_dict:
             self.extractor.load_state_dict(state_dict['model']['extractor'])
             self.rpn.load_state_dict(state_dict['model']['rpn'])
             self.roi_head.load_state_dict(state_dict['model']['roi_head'])
+            self.extractor.cuda(target_gpu)
+            self.rpn.cuda(target_gpu)
+            self.roi_head.cuda(target_gpu)
         else:  # legacy way, for backward compatibility
             print('No Model Found')
             raise NameError
