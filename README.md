@@ -11,4 +11,5 @@ Base on [chenyuntc/simple-faster-rcnn-pytorch](https://github.com/chenyuntc/simp
 
 
 TODO:
+仍存在bug,无法准确预测bbox
 支持多batch_size  
