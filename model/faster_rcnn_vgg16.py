@@ -9,6 +9,8 @@ from model.creator import ProposalTargetCreator,AnchorTargetCreator
 from collections import namedtuple
 import time
 import os
+import math
+from data import dataset_utils,dataset
 
 LossTuple = namedtuple('LossTuple',
                        ['rpn_loc_loss',
@@ -84,10 +86,10 @@ class FasterRCNNVGG16(nn.Module):
     def __init__(self,opt):
         super(FasterRCNNVGG16,self).__init__()
         self.opt = opt
-        self.rpn_sigma = opt.rpn_sigma
-        self.roi_sigma = opt.roi_sigma
-        self.lr = opt.lr
-        self.lr_decay = opt.lr_decay
+        # self.rpn_sigma = opt.rpn_sigma
+        # self.roi_sigma = opt.roi_sigma
+        # self.lr = opt.lr
+        self.lr_decay_rate = opt.lr_decay_rate
         self.n_class = opt.n_class
         self.weight_decay = opt.weight_decay
         self.use_adam = opt.use_adam
@@ -96,6 +98,8 @@ class FasterRCNNVGG16(nn.Module):
         self.feat_stride = 16  # downsample 16x for output of conv5 in vgg16
         self.ratios = [0.5, 1, 2]
         self.anchor_scales = [8, 16, 32]
+
+        self.roi_start_training_epoch = math.ceil(opt.epoch/3)-1
 
         # load vgg16,split to extractor and classifier
         # extractor:extract featmap
@@ -135,24 +139,46 @@ class FasterRCNNVGG16(nn.Module):
             self.roi_head.cuda(self.gpu)
 
         # init optimizer
-        lr = self.lr
-        params = []
+        extractor_rpn_parameters = []
+        roi_parameters = []
+
         for key, value in dict(self.named_parameters()).items():
             if value.requires_grad:
-                if 'bias' in key:
-                    params += [{'params': [value], 'lr': lr * 2, 'weight_decay': 0}]
-                else:
-                    params += [{'params': [value], 'lr': lr, 'weight_decay': self.weight_decay}]
+                if ('extractor' in key) or ('rpn' in key):
+                    extractor_rpn_parameters.append(value)
+                if 'roi_head' in key:
+                    roi_parameters.append(value)
         if self.use_adam:
-            self.optimizer = torch.optim.Adam(params)
+            self.extractor_rpn_optimizer = torch.optim.Adam(extractor_rpn_parameters,opt.lr,weight_decay=opt.weight_decay)
+            self.roi_optimizer = torch.optim.Adam(roi_parameters,opt.lr,weight_decay=opt.weight_decay)
         else:
-            self.optimizer = torch.optim.SGD(params, momentum=0.9)
+            self.extractor_rpn_optimizer = torch.optim.SGD(extractor_rpn_parameters,opt.lr,weight_decay=opt.weight_decay,momentum=0.9)
+            self.roi_optimizer = torch.optim.SGD(roi_parameters,opt.lr,weight_decay=opt.weight_decay,momentum=0.9)
 
+    def train_step(self, img, bbox, label, scale, epoch):
+        self.extractor.train()
+        self.rpn.train()
+        self.roi_head.train()
 
-    def train_step(self, img, bbox, label, scale):
         n = bbox.shape[0]
         if n != 1:
             raise ValueError('Currently only batch size 1 is supported.')
+
+        if epoch >= self.roi_start_training_epoch:
+            features, roi, rpn_loc_loss, rpn_cls_loss = self.train_extracor_and_rpn(img,bbox,label,scale,retain_graph=True)
+            roi_loc_loss, roi_cls_loss = self.train_roi_head(roi,features,bbox,label)
+        else:
+            features, roi, rpn_loc_loss, rpn_cls_loss = self.train_extracor_and_rpn(img,bbox,label,scale)
+            roi_loc_loss = utils.totensor(0).float()
+            roi_cls_loss = utils.totensor(0).float()
+
+        total_loss = rpn_loc_loss + rpn_cls_loss + roi_loc_loss + roi_cls_loss
+        losses = [rpn_loc_loss, rpn_cls_loss, roi_loc_loss, roi_cls_loss, total_loss]
+
+
+        return LossTuple(*losses)
+
+    def train_extracor_and_rpn(self,img, bbox, label, scale, retain_graph=True):
 
         _, _, H, W = img.shape
         img_size = (H, W)
@@ -190,20 +216,34 @@ class FasterRCNNVGG16(nn.Module):
         gt_rpn_loc, gt_rpn_label = self.anchor_target_creator(utils.tonumpy(bbox), anchor, img_size)
         gt_rpn_label = utils.totensor(gt_rpn_label).long()
         gt_rpn_loc = utils.totensor(gt_rpn_loc)
-        # print('in PRN training,after AnchorTargetCreator: positive {}, negitive {}'.format(torch.sum(gt_rpn_label==1).item(),torch.sum(gt_rpn_label==0).item()))
-        # print(torch.sum(gt_rpn_loc))
+
+        # #debug
+        # print('debug')
+        # gt_rpn_loc_ = utils.loc2bbox(anchor,gt_rpn_loc.numpy())
+        # # gt_rpn_loc_ = gt_rpn_loc_[gt_rpn_label.numpy()>=0]
+        # # dataset_utils.draw_pic(img[0].numpy(),dataset.VOC_BBOX_LABEL_NAMES,gt_rpn_loc_,)
+        # anchor_ = anchor[gt_rpn_label.numpy()==0]
+        # dataset_utils.draw_pic(img[0].numpy(),dataset.VOC_BBOX_LABEL_NAMES,anchor_)
+
 
         # ------------------ RPN losses 计算 -------------------#
         # loc loss(位置回归loss)
         # loc的loss只计算正样本的
-        rpn_loc_loss = self._fast_rcnn_loc_loss(rpn_loc,gt_rpn_loc,gt_rpn_label.data,self.rpn_sigma)
+        rpn_loc_loss = self._fast_rcnn_loc_loss(rpn_loc,gt_rpn_loc,gt_rpn_label.data)
 
         # cls loss(分类loss,这里只分两类)
         # label=-1的样本被忽略
-        rpn_cls_loss = F.cross_entropy(rpn_score, gt_rpn_label, ignore_index=-1)
-        # _gt_rpn_label = gt_rpn_label[gt_rpn_label > -1]
-        # _rpn_score = utils.tonumpy(rpn_score)[at.tonumpy(gt_rpn_label) > -1]
-        # self.rpn_cm.add(utils.totensor(_rpn_score, False), _gt_rpn_label.data.long())
+        # rpn_cls_loss = F.cross_entropy(rpn_score, gt_rpn_label, ignore_index=-1)
+        rpn_cls_loss = self._fast_rcnn_cls_loss(rpn_score,gt_rpn_label)
+
+        rpn_loss = rpn_loc_loss + rpn_cls_loss
+        self.extractor_rpn_optimizer.zero_grad()
+        rpn_loss.backward(retain_graph=retain_graph)
+        self.extractor_rpn_optimizer.step()
+
+        return features, roi, rpn_loc_loss, rpn_cls_loss
+
+    def train_roi_head(self, roi, features, bbox, label):
 
         # ------------------ ROI Nework -------------------#
         # ------------------ ROI 标注 -------------------#
@@ -218,11 +258,19 @@ class FasterRCNNVGG16(nn.Module):
             utils.tonumpy(bbox),
             utils.tonumpy(label),
             self.loc_normalize_mean,
-            self.loc_normalize_std)
-        # print('ROI foreground:backgroud')
-        # print('ROI samples:{}\t{}'.format(len(np.where(gt_roi_label!=0)[0]),len(np.where(gt_roi_label==0)[0])))
+            self.loc_normalize_std,)
         # NOTE it's all zero because now it only support for batch=1 now(这里解释了上面的疑问)
-        # sample_roi_index = torch.zeros(len(sample_roi))
+
+        # #debug
+        # print('debug')
+        # gt_roi_loc_ = utils.loc2bbox(sample_roi,gt_roi_loc)
+        # print(gt_roi_loc_.shape)
+        # print(gt_roi_loc_[:10])
+        # gt_roi_label_ = gt_roi_label-1
+        # # gt_rpn_loc_ = gt_rpn_loc_[gt_rpn_label.numpy()>=0]
+        # # dataset_utils.draw_pic(img[0].numpy(),dataset.VOC_BBOX_LABEL_NAMES,gt_rpn_loc_,)
+        # gt_roi_loc_ = gt_roi_loc_[gt_roi_label_>=0]
+        # dataset_utils.draw_pic(img[0].numpy(),dataset.VOC_BBOX_LABEL_NAMES,gt_roi_loc_,gt_roi_label_)
 
         # ------------------ ROI 预测 -------------------#
         # 这里不需要对所有的ROI进行预测,所以在标注阶段确定了样本之后再进行预测
@@ -246,29 +294,24 @@ class FasterRCNNVGG16(nn.Module):
         roi_loc_loss = self._fast_rcnn_loc_loss(
             roi_loc.contiguous(),
             gt_roi_loc,
-            gt_roi_label.data,
-            self.roi_sigma)
+            gt_roi_label.data,)
 
         # cls loss(分类loss,这里分21类)
-        roi_cls_loss = nn.CrossEntropyLoss()(roi_cls_score, gt_roi_label)
+        roi_cls_loss = F.cross_entropy(roi_cls_score, gt_roi_label)
 
-        # self.roi_cm.add(at.totensor(roi_score, False), gt_roi_label.data.long())
+        roi_loss = roi_loc_loss + roi_cls_loss
 
-        losses = [rpn_loc_loss, rpn_cls_loss, roi_loc_loss, roi_cls_loss]
-        losses = losses + [sum(losses)]
+        self.roi_optimizer.zero_grad()
+        roi_loss.backward()
+        self.roi_optimizer.step()
 
-        self.optimizer.zero_grad()
-        rpn_loc_loss.backward(retain_graph=True)
-        rpn_cls_loss.backward(retain_graph=True)
-        roi_loc_loss.backward(retain_graph=True)
-        roi_cls_loss.backward()
-        self.optimizer.step()
-
-        return LossTuple(*losses)
+        return roi_loc_loss, roi_cls_loss
 
     def predict(self,img, scale):
+        self.extractor.eval()
+        self.rpn.eval()
+        self.roi_head.eval()
 
-        self.eval()
         n = img.shape[0]
         if n != 1:
             raise ValueError('Currently only batch size 1 is supported.')
@@ -317,30 +360,40 @@ class FasterRCNNVGG16(nn.Module):
         return bbox,label
 
 
-    def _smooth_l1_loss(self,x, t, in_weight, sigma):
-        sigma2 = sigma ** 2
-        diff = in_weight * (x - t)
-        abs_diff = diff.abs()
-        flag = (abs_diff.data < (1. / sigma2)).float()
-        y = (flag * (sigma2 / 2.) * (diff ** 2) +
-             (1 - flag) * (abs_diff - 0.5 / sigma2))
+    def _smooth_l1_loss(self,x, t, in_weight):
+        diff = (in_weight * (x - t)).abs()
+        # abs_diff = diff.abs()
+        flag = (diff < 1).float()
+        y = (flag * 0.5 * (diff ** 2) +
+             (1 - flag) * (diff - 0.5))
         return y.sum()
 
-    def _fast_rcnn_loc_loss(self,pred_loc, gt_loc, gt_label, sigma):
+    def _fast_rcnn_loc_loss(self,pred_loc, gt_loc, gt_label):
         # Localization loss is calculated only for positive rois.
         # NOTE:  unlike origin implementation,
         # we don't need inside_weight and outside_weight, they can calculate by gt_label
         # 只有正样本参与计算loc的loss,负样本和忽略的样本的in_weight=0
         in_weight = torch.zeros(gt_loc.shape)
-        in_weight[(gt_label > 0).view(-1, 1).expand_as(in_weight)] = 1
+        in_weight[gt_label > 0] = 1
         in_weight = utils.totensor(in_weight)
-        loc_loss = self._smooth_l1_loss(pred_loc, gt_loc, in_weight, sigma)
-        # Normalize by total number of negtive and positive rois.
-        loc_loss /= (gt_label >= 0).sum().float()  # ignore gt_label==-1 for rpn_loss
+        loc_loss = self._smooth_l1_loss(pred_loc, gt_loc, in_weight)
+        loc_loss /= (gt_label > 0).sum().float()  # ignore gt_label==-1 & 0 for rpn_loc_loss
         return loc_loss
 
+    def _fast_rcnn_cls_loss(self,pred_label,gt_label):
+        # in_weight = torch.zeros(gt_label.shape)
+        in_weight = (gt_label>=0)
+        # in_weight[(gt_label > 0).view(-1, 1).expand_as(in_weight)] = 1
+        in_weight = utils.totensor(in_weight)
+        cls_loss = F.binary_cross_entropy(pred_label,gt_label.float(),in_weight,reduction='sum')
+        cls_loss /= (gt_label>=0).sum().float()
+        return cls_loss
+
+
     def decay_lr(self, decay=0.1):
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.extractor_rpn_optimizer.param_groups:
+            param_group['lr'] *= decay
+        for param_group in self.roi_optimizer.param_groups:
             param_group['lr'] *= decay
         return
 
@@ -396,9 +449,21 @@ class FasterRCNNVGG16(nn.Module):
 
 if __name__ == '__main__':
     from config import opt
-    from data.dataset import VOCBboxDataset
+    from data.dataset import VOCBboxDataset,VOC_BBOX_LABEL_NAMES
     import random
     model = FasterRCNNVGG16(opt)
+
+    train_dataset = VOCBboxDataset(opt,train=True,random_filp=False)
+
+
+    index = 500
+    oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
+    # print(oimg)
+    img = np.expand_dims(img,0)
+    bbox = np.expand_dims(bbox,0)
+    label = np.expand_dims(label,0)
+    model.train_step(img,bbox,label,scale)
+
 
     # img = torch.randn((1,3,600,800))
     # bbox = torch.from_numpy(np.asarray([[[114, 122, 274, 378,],
@@ -418,8 +483,8 @@ if __name__ == '__main__':
     # label = label[np.newaxis,:]
     # losses = model.train_step(img, bbox, label, scale)
 
-    model = vgg16_bn()
-    print(model)
+    # model = vgg16_bn()
+    # print(model)
 
 
 

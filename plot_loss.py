@@ -16,7 +16,7 @@ roi_loc_loss = y[:,2]
 roi_cls_loss = y[:,3]
 total_loss = y[:,4]
 
-window_smooth = 10
+window_smooth = 5
 
 sx = []
 srpn_loc_loss = []

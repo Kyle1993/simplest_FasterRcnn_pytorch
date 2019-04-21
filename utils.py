@@ -373,16 +373,17 @@ def nms(bbox,scores,threshold):
     # keep为最后保留的边框
     keep = []
 
-    # 找出被包含在i内的bbox，并删除
-    def contain(box_id):
-        box = bbox[box_id]
-        return (box[0] >= x1[i] and box[1] >= y1[i] and box[2] <= x2[i] and box[3] <= y2[i])
+
 
     while orders.size > 0:
         # order[0]是当前分数最大的窗口，肯定保留
         i = orders[0]
         keep.append(i)
 
+        # 找出被包含在i内的bbox，并删除
+        def contain(box_id):
+            box = bbox[box_id]
+            return (box[0] >= x1[i] and box[1] >= y1[i] and box[2] <= x2[i] and box[3] <= y2[i])
         contain_box_id = list(filter(contain, orders[1:]))
         orders = np.setdiff1d(orders,contain_box_id)
 

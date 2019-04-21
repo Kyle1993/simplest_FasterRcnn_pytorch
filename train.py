@@ -22,7 +22,7 @@ for epoch in range(opt.epoch):
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 
     for i,(original_img, original_bbox, img, bbox, label, scale, flip) in enumerate(train_dataloader):
-        losses = model.train_step(img,bbox,label,scale)
+        losses = model.train_step(img,bbox,label,scale,epoch)
         print('Epoch{} [{}/{}] \tTotal Loss: {:.6f}'.format(epoch, i,train_num,losses.total_loss.item()))
 
         # here can be delete
@@ -41,6 +41,6 @@ for epoch in range(opt.epoch):
 
 
     if epoch == 3:
-        model.decay_lr(opt.lr_decay)
+        model.decay_lr(opt.lr_decay_rate)
 
 model.save(save_optimizer=True)

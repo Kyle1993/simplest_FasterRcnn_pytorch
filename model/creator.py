@@ -1,6 +1,7 @@
 import numpy as np
 
 import utils
+from data import dataset_utils,dataset
 
 
 class ProposalTargetCreator(object):
@@ -93,8 +94,8 @@ class ProposalTargetCreator(object):
 
         # roi是rpn网络生成的候选区域
         # bbox是ground truth
-        # 这里要注意的是bbox区域也可以作为训练样本，所以这里将roi和bbox concat起来
-        roi = np.concatenate((roi, bbox), axis=0)
+        # # 这里要注意的是bbox区域也可以作为训练样本，所以这里将roi和bbox concat起来
+        # roi = np.concatenate((roi, bbox), axis=0)
 
         pos_roi_per_image = np.round(self.n_sample * self.pos_ratio)  # 采样的正样本数量
         # 每个roi对应每个bbox的IOU
@@ -145,6 +146,22 @@ class ProposalTargetCreator(object):
         gt_roi_loc = utils.bbox2loc(sample_roi, bbox[gt_assignment[keep_index]])
         gt_roi_loc = (gt_roi_loc - loc_normalize_mean) / loc_normalize_std
 
+        # # debug
+        # print('debug')
+        # # gt_roi_loc_ = utils.loc2bbox(sample_roi,gt_roi_loc)
+        # # print(gt_roi_loc_.shape)
+        # # print(gt_roi_loc_[:10])
+        # gt_roi_label_ = gt_roi_label - 1
+        # # gt_rpn_loc_ = gt_rpn_loc_[gt_rpn_label.numpy()>=0]
+        # # dataset_utils.draw_pic(img[0].numpy(),dataset.VOC_BBOX_LABEL_NAMES,gt_rpn_loc_,)
+        # # gt_roi_loc_ = gt_roi_loc_[gt_roi_label_>=0]
+        # img_ = dataset_utils.inverse_normalize(img[0].numpy())
+        # pos_roi_ = sample_roi[:len(pos_index)]
+        # pos_roi_cls_ = gt_roi_label_[:len(pos_index)]
+        # print(pos_roi_.shape,gt_roi_loc[:len(pos_index)].shape)
+        # pos_bbox = utils.loc2bbox(pos_roi_,gt_roi_loc[:len(pos_index)])
+        # dataset_utils.draw_pic(img_, dataset.VOC_BBOX_LABEL_NAMES, pos_bbox,pos_roi_cls_)
+
         # 这里似乎并不能保证选取出来的sample_roi数目一定是128个,因为极端情况下可以有很多不符合条件的roi,即不能选作正样本也不能选做负样本
         return sample_roi, gt_roi_loc, gt_roi_label
 
@@ -177,7 +194,7 @@ class AnchorTargetCreator(object):
     def __init__(self,
                  n_sample=128,
                  # pos_iou_thresh=0.6, neg_iou_thresh=0.2,
-                 pos_iou_thresh=0.8, neg_iou_thresh=0.1,
+                 pos_iou_thresh=0.7, neg_iou_thresh=0.1,
                  pos_ratio=0.5):
         self.n_sample = n_sample
         self.pos_iou_thresh = pos_iou_thresh
@@ -220,17 +237,18 @@ class AnchorTargetCreator(object):
         n_anchor = len(anchor)
         # inside_index:位置不出界的合法anchor的index
         inside_index = _get_inside_index(anchor, img_H, img_W)
-        anchor = anchor[inside_index]
+        anchor_ = anchor[inside_index]
+        # print(anchor[:10])
 
         # argmax_ious:与anchor最接近的bbox索引
         #   比如：anchor0与bbox2最接近,anchor1与bbox0最接近...
         #   那么argmax_ious = [2,0,...]
         # label:大于IOU阈值的标记为正样本1,小于IOU阈值的标记为负样本0,还有一部分被丢弃掉的样本标记为-1
-        argmax_ious, label = self._create_label(anchor, bbox)
+        argmax_ious, label = self._create_label(anchor_, bbox)
 
         # compute bounding box regression targets
         # 将位置框转换为修正值，作为回归目标
-        loc = utils.bbox2loc(anchor, bbox[argmax_ious])
+        loc = utils.bbox2loc(anchor_, bbox[argmax_ious])
 
         # map up to original set of anchors
         # 由于RPN网络生成了所有anchor(9*hh*ww个)的预测,所以这里也生成所有anchor的目标

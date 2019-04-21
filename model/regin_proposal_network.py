@@ -3,6 +3,7 @@ from torch.nn import functional as F
 import torch
 from torch import nn
 from model import creator
+from data import dataset_utils
 
 # from model.utils.bbox_tools import generate_anchor_base
 # from model.utils.creator_tool import ProposalCreator
@@ -112,7 +113,7 @@ class RegionProposalNetwork(nn.Module):
         self.proposcal_creator = creator.ProposalCreator(self, **proposal_creator_params)
         n_anchor = self.anchor_base.shape[0]
         self.conv1 = nn.Conv2d(in_channels, mid_channels, 3, 1, 1)
-        self.score = nn.Conv2d(mid_channels, n_anchor * 2, 1, 1, 0)
+        self.score = nn.Conv2d(mid_channels, n_anchor * 1, 1, 1, 0)
         self.loc = nn.Conv2d(mid_channels, n_anchor * 4, 1, 1, 0)
         self.normal_init(self.conv1, 0, 0.01)
         self.normal_init(self.score, 0, 0.01)
@@ -163,7 +164,7 @@ class RegionProposalNetwork(nn.Module):
         # x:[1,in_channel=512,hh,ww]
         n, _, hh, ww = x.shape
         # 枚举出feature_map上每个点对应原图的anchor，这里的原图是指transform之后的图像
-        # anchor:[hh*ww*9,4]
+        # anchor:[hh*ww*9,4],这里的anchor是对应原始图片的值
         anchor = self._enumerate_shifted_anchor(np.array(self.anchor_base),self.feat_stride, hh, ww)
 
         n_anchor = anchor.shape[0] // (hh * ww)     # len(ratios)*len(anchor_scales)=9
@@ -178,21 +179,21 @@ class RegionProposalNetwork(nn.Module):
         rpn_locs = rpn_locs.permute(0, 2, 3, 1).contiguous().view(n, -1, 4)
 
         # 获得每个anchor的打分,这里为一个前景后景二分类,即是物体或不是物体
-        # 这里为什么不只生成一个分数
-        rpn_scores = self.score(h)
+        # 这里为什么不只生成一个分数(已修改)
+        rpn_scores = torch.sigmoid(self.score(h))
         rpn_scores = rpn_scores.permute(0, 2, 3, 1).contiguous()
-        rpn_scores = rpn_scores.view(n, hh, ww, n_anchor, 2)
-        rpn_fg_scores = rpn_scores[:, :, :, :, 1].contiguous()
+        rpn_scores = rpn_scores.view(n, -1)
+        # rpn_fg_scores = rpn_scores[:, :, :, :, 1].contiguous()
         # 前景(是物体)概率:[1,hh,ww,9]
-        rpn_fg_scores = rpn_fg_scores.view(n, -1)
+        # rpn_fg_scores = rpn_fg_scores.view(n, -1)
         # 二分类概率:[1,9*hh*ww,2]
-        rpn_scores = rpn_scores.view(n, -1, 2)
+        # rpn_scores = rpn_scores.view(n, -1, 2)
 
         # 这里n=1,所以只选取[0]
         # 通过proposcal_creator,根据IOU选取ROI
         # 这里rpn_locs是[dx1,dy1,dx2,dy2],在proposcal_creator内会根据archor转化成bbox
         # 这里的roi就是bbox通过筛选的结果[num_post_nms,4],是[x1,y1,x2,y2的形式]
-        roi = self.proposcal_creator(rpn_locs[0].cpu().data.numpy(),rpn_fg_scores[0].cpu().data.numpy(),anchor, img_size,scale=scale)
+        roi = self.proposcal_creator(rpn_locs[0].cpu().data.numpy(),rpn_scores[0].cpu().data.numpy(),anchor, img_size,scale=scale)
 
         # batch_index = i * np.ones((len(roi),), dtype=np.int32)
         # rois.append(roi)

@@ -82,7 +82,7 @@ class VOCBboxDataset:
 
     """
 
-    def __init__(self, opt, train=True,return_difficult=False):
+    def __init__(self, opt, train=True,return_difficult=False,random_filp=True):
 
         if train:
             split = 'trainval'
@@ -99,6 +99,7 @@ class VOCBboxDataset:
         self.return_difficult = return_difficult
         self.label_names = VOC_BBOX_LABEL_NAMES
         self.opt = opt
+        self.random_filp = random_filp
 
     def __len__(self):
         return len(self.ids)
@@ -135,7 +136,7 @@ class VOCBboxDataset:
         original_img = dataset_utils.read_image(img_file, color=True)
         # print(img.shape)
 
-        img, bbox, label, scale, flip = dataset_utils.transform(original_img,original_bbox,label,self.opt.min_size,self.opt.max_size)  # 保证短边大于min或者长边小于max
+        img, bbox, label, scale, flip = dataset_utils.transform(original_img,original_bbox,label,self.opt.min_size,self.opt.max_size,self.random_filp)  # 保证短边大于min或者长边小于max
 
         return original_img, original_bbox, img.copy(), bbox.copy(), label.copy(), scale, np.array(flip,dtype=np.int)  # scale是transform的比例,filp表示随机翻转
 
@@ -153,18 +154,19 @@ if __name__ == '__main__':
         print(scale)
         break
 
-    # index = 30
-    # oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
-    # print(oimg.shape)
-    # print(oimg)
-    # print(img.shape)
-    # print(scale)
-    # print(obbox)
-    # print(bbox.shape)
-    # print(label.shape)
-    # print(flip)
-    # dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,dataset_utils.bbox_inverse(bbox,img.shape[1:],flip,scale),label,)
-    # dataset_utils.draw_pic(img,VOC_BBOX_LABEL_NAMES,bbox,label)
+    index = 30
+    oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
+    print(oimg.shape)
+    print(oimg)
+    print(img.shape)
+    print(scale)
+    print(obbox)
+    print(bbox.shape)
+    print(label.shape)
+    print(flip)
+    print(img.shape)
+    dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,dataset_utils.bbox_inverse(bbox,img.shape[1:],flip,scale),label,)
+    dataset_utils.draw_pic(img,VOC_BBOX_LABEL_NAMES,bbox,label)
 
     # font = ImageFont.load_default()
     # image = Image.fromarray(np.uint8(oimg.transpose(1,2,0)))

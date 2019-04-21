@@ -269,10 +269,11 @@ def inverse_normalize(img):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     assert img.shape[0] == len(mean)
+    # inverse_img = (img*std)+mean
     inverse_img = np.empty(img.shape)
     for i in range(len(mean)):
-        inverse_img[i] = (img[i]*std[i])+mean[i]
-    return inverse_img
+        inverse_img[i,:,:] = (img[i,:,:]*std[i])+mean[i]
+    return inverse_img*256
 
 def pytorch_normalze(img):
     """
@@ -330,7 +331,7 @@ def preprocess(img, min_size=600, max_size=1000):
 # 将原图reshape成规定大小
 # 随机翻转
 # 将bbox按比例缩放翻转
-def transform(img,bbox,label,min_size=600,max_size=1000):
+def transform(img,bbox,label,min_size=600,max_size=1000,random_filp=True):
     _, H, W = img.shape
     img,scale = preprocess(img, min_size, max_size)
     # _, o_H, o_W = img.shape
@@ -338,7 +339,10 @@ def transform(img,bbox,label,min_size=600,max_size=1000):
     bbox = resize_bbox(bbox,scale)
 
     # horizontally flip
-    img, filp = random_flip(img, x_random=True,y_random=True, return_param=True)
+    if random_filp:
+        img, filp = random_flip(img, x_random=True,y_random=True, return_param=True)
+    else:
+        filp = [False,False]
     bbox = flip_bbox(bbox, (img.shape[1], img.shape[2]), x_flip=filp[0],y_flip=filp[1])
 
     return img, bbox, label, scale, filp
@@ -356,7 +360,7 @@ def bbox_inverse(bbox,size,flip,scale):
 
     return obbox
 
-def draw_pic(original_img,VOC_BBOX_LABEL_NAMES,target_bbox,target_label,predict_bbox=None,predict_label=None):
+def draw_pic(original_img,VOC_BBOX_LABEL_NAMES,target_bbox,target_label=None,predict_bbox=None,predict_label=None):
     font = ImageFont.load_default()
     image = Image.fromarray(np.uint8(original_img.transpose(1,2,0)))
     draw = ImageDraw.Draw(image)
@@ -364,13 +368,15 @@ def draw_pic(original_img,VOC_BBOX_LABEL_NAMES,target_bbox,target_label,predict_
     for i in range(target_bbox.shape[0]):
         y_min,x_min,y_max,x_max = target_bbox[i]
         draw.rectangle((x_min,y_min,x_max,y_max), outline='red')
-        draw.text((x_min, y_min), 'target_'+VOC_BBOX_LABEL_NAMES[target_label[i]],font=font)
+        if target_label is not None:
+            draw.text((x_min, y_min), 'target_'+VOC_BBOX_LABEL_NAMES[target_label[i]],font=font)
 
-    if (not predict_bbox is None) and (not predict_label is None):
+    if (not predict_bbox is None):
         for i in range(predict_bbox.shape[0]):
             y_min,x_min,y_max,x_max = predict_bbox[i]
             draw.rectangle((x_min,y_min,x_max,y_max), outline='green')
-            draw.text((x_min, y_min), 'predict_'+VOC_BBOX_LABEL_NAMES[predict_label[i]],font=font)
+            if predict_label is not None:
+                draw.text((x_min, y_min), 'predict_'+VOC_BBOX_LABEL_NAMES[predict_label[i]],font=font)
 
     image.show()
 
