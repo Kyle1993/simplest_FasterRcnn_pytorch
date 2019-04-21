@@ -9,33 +9,34 @@ class Config:
     # data
     # data_dir = '/home/kyle/github_download/simple-faster-rcnn-pytorch/data/VOC/VOCdevkit/VOC2007/'
     # data_dir = '/home/jianglibin/pythonproject/simple_faster_rcnn/data/VOC/VOCdevkit/VOC2007/'
-    data_dir = '/data1/jianglibin/VOC/VOCdevkit/VOC2007/'
+    data_dir = '/data2/jianglibin/VOC/VOCdevkit/VOC2007/'
+    # data_dir = '/media/kyle/Data/Data/VOC2007'
     min_size = 600  # image resize
     max_size = 1000 # image resize
     num_workers = 8
-    gpu = 0
+    gpu = 1
     test_num_workers = 8
     n_class = 20+1
 
     # sigma for l1_smooth_loss
-    rpn_sigma = 3.
+    rpn_sigma = 2.
     roi_sigma = 1.
 
     # param for optimizer
     # 0.0005 in origin paper but 0.0001 in tf-faster-rcnn
     weight_decay = 0.0005
     lr_decay = 0.1  # 1e-3 -> 1e-4
-    lr = 1e-3
+    lr = 5e-4
 
     # for debug
-    use_hyperboard = True
+    # use_hyperboard = False
 
     # preset
     # data = 'voc'
     # pretrained_model = 'vgg16'
 
     # training
-    epoch = 2
+    epoch = 6
 
 
     use_adam = True  # Use Adam optimizer

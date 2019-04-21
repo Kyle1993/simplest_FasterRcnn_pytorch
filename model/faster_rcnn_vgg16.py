@@ -1,14 +1,14 @@
 import torch
-from torchvision.models import vgg16_bn
+from torchvision.models import vgg16_bn,vgg16
 from torch import nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 import numpy as np
 import utils
 from model.regin_proposal_network import RegionProposalNetwork
 from model.creator import ProposalTargetCreator,AnchorTargetCreator
 from collections import namedtuple
 import time
+import os
 
 LossTuple = namedtuple('LossTuple',
                        ['rpn_loc_loss',
@@ -68,6 +68,7 @@ class ROIHead(nn.Module):
         rois_img,batch_size = self.get_roi_feature(features[0],rois)
 
         batch = []
+        # 用SSP的方法吧rois_img pooling成固定大小(7*7)
         for f in rois_img:
             batch.append(self.roi_pooling(f))
         batch = torch.stack(batch)
@@ -102,9 +103,10 @@ class FasterRCNNVGG16(nn.Module):
         vgg16 = vgg16_bn(pretrained=True)
 
         # init extractor
-        extractor = list(vgg16.features)[:30]
-        # freeze top4 conv
-        for layer in extractor[:10]:
+        # vgg是前30层,vgg_bn是前43层(因为有bn层)
+        extractor = list(vgg16.features)[:43]
+        # freeze top4 conv,vgg:[:10],vgg_bn:[:14]
+        for layer in extractor[:14]:
             for p in layer.parameters():
                 p.requires_grad = False
         self.extractor = nn.Sequential(*extractor)
@@ -127,9 +129,10 @@ class FasterRCNNVGG16(nn.Module):
         self.loc_normalize_mean = np.array((0., 0., 0., 0.), np.float32)
         self.loc_normalize_std = np.array((0.1, 0.1, 0.2, 0.2), np.float32)
 
-        self.extractor.cuda(self.gpu)
-        self.rpn.cuda(self.gpu)
-        self.roi_head.cuda(self.gpu)
+        if self.gpu>=0:
+            self.extractor.cuda(self.gpu)
+            self.rpn.cuda(self.gpu)
+            self.roi_head.cuda(self.gpu)
 
         # init optimizer
         lr = self.lr
@@ -153,11 +156,13 @@ class FasterRCNNVGG16(nn.Module):
 
         _, _, H, W = img.shape
         img_size = (H, W)
+        # print(img_size)
 
-        # extractor在这里是VGG16的前10层,通过extractor可以提取feature_map
+        # extractor在这里是VGG16的前43层,通过extractor可以提取feature_map
         # print(img)
         img = utils.totensor(img)
         features = self.extractor(img)
+        # print(features.shape)
 
         # ------------------ RPN Network -------------------#
         # ------------------ RPN 预测 -------------------#
@@ -170,27 +175,23 @@ class FasterRCNNVGG16(nn.Module):
         # rpn_locs和rpn_scores是用于训练时计算loss的,rois是给下面rcnn网络用来分类的
         # 注意,这里对每个anchor都进行了位置和分类的预测，也就是对9*hh*ww个anchor都进行了预测
         rpn_loc, rpn_score, roi, anchor = self.rpn(features, img_size, scale)
+        # print('after ProposalCreator: roi shape:{},anchor shape:{}'.format(roi.shape,anchor.shape))
 
-        # Since batch size is one, convert variables to singular form
         # 因为这里只支持BatchSize=1,所以直接提取出来
         bbox = bbox[0]
         label = label[0]
         rpn_score = rpn_score[0]  # [n_anchor,2]
         rpn_loc = rpn_loc[0]  # [n_anchor,4]
-        roi = roi
 
         # ------------------ RPN 标注 -------------------#
         # 因为RPN网络对所有的(9*hh*ww)个anchor都进行了预测,所以这里的gt_rpn_loc, gt_rpn_label应该包含所有anchor的对应值
         # 但是在真实计算中只采样了一定的正负样本共256个用于计算loss
-        # 这里的做法:正样本label=1,负样本label=0,不合法和要忽略的样本label=-1,在计算loss时加权区分
-        gt_rpn_loc, gt_rpn_label = self.anchor_target_creator(
-            utils.tonumpy(bbox),
-            anchor,
-            img_size)
+        # 这里的做法:正样本label=1,负样本label=0,不合法和要忽略的样本label=-1,loc=0,在计算loss时加权区分
+        gt_rpn_loc, gt_rpn_label = self.anchor_target_creator(utils.tonumpy(bbox), anchor, img_size)
         gt_rpn_label = utils.totensor(gt_rpn_label).long()
-        # print('RPN positive:negitive')
-        # print('RPN samples:{}\t{}'.format(len(np.where(gt_rpn_label.cpu().data.numpy()==1)[0]),len(np.where(gt_rpn_label.cpu().data.numpy()==0)[0])))
         gt_rpn_loc = utils.totensor(gt_rpn_loc)
+        # print('in PRN training,after AnchorTargetCreator: positive {}, negitive {}'.format(torch.sum(gt_rpn_label==1).item(),torch.sum(gt_rpn_label==0).item()))
+        # print(torch.sum(gt_rpn_loc))
 
         # ------------------ RPN losses 计算 -------------------#
         # loc loss(位置回归loss)
@@ -199,7 +200,7 @@ class FasterRCNNVGG16(nn.Module):
 
         # cls loss(分类loss,这里只分两类)
         # label=-1的样本被忽略
-        rpn_cls_loss = F.cross_entropy(rpn_score, gt_rpn_label.cuda(self.gpu), ignore_index=-1)
+        rpn_cls_loss = F.cross_entropy(rpn_score, gt_rpn_label, ignore_index=-1)
         # _gt_rpn_label = gt_rpn_label[gt_rpn_label > -1]
         # _rpn_score = utils.tonumpy(rpn_score)[at.tonumpy(gt_rpn_label) > -1]
         # self.rpn_cm.add(utils.totensor(_rpn_score, False), _gt_rpn_label.data.long())
@@ -234,7 +235,10 @@ class FasterRCNNVGG16(nn.Module):
         roi_cls_loc = roi_cls_loc.view(n_sample, -1, 4)  # [n_sample, n_class+1, 4]
         # roi_cls_loc得到的是对每个类的坐标的预测,但是真正的loss计算只需要在ground truth上的类的位置预测
         # roi_loc就是在ground truth上的类的位置预测
-        roi_loc = roi_cls_loc[torch.arange(0, n_sample).long().cuda(self.gpu), utils.totensor(gt_roi_label).long()]  # [m_sample.4]
+        index = torch.arange(0, n_sample).long()
+        if self.gpu>=0:
+            index = index.cuda(self.gpu)
+        roi_loc = roi_cls_loc[index, utils.totensor(gt_roi_label).long()]  # [num_sample,4]
         gt_roi_label = utils.totensor(gt_roi_label).long()
         gt_roi_loc = utils.totensor(gt_roi_loc)
 
@@ -246,7 +250,7 @@ class FasterRCNNVGG16(nn.Module):
             self.roi_sigma)
 
         # cls loss(分类loss,这里分21类)
-        roi_cls_loss = nn.CrossEntropyLoss()(roi_cls_score, gt_roi_label.cuda(self.gpu))
+        roi_cls_loss = nn.CrossEntropyLoss()(roi_cls_score, gt_roi_label)
 
         # self.roi_cm.add(at.totensor(roi_score, False), gt_roi_label.data.long())
 
@@ -263,6 +267,8 @@ class FasterRCNNVGG16(nn.Module):
         return LossTuple(*losses)
 
     def predict(self,img, scale):
+
+        self.eval()
         n = img.shape[0]
         if n != 1:
             raise ValueError('Currently only batch size 1 is supported.')
@@ -313,25 +319,22 @@ class FasterRCNNVGG16(nn.Module):
 
     def _smooth_l1_loss(self,x, t, in_weight, sigma):
         sigma2 = sigma ** 2
-        # print(type(x.data))
-        # print(type(t.data))
-        # print(type(in_weight.data))
         diff = in_weight * (x - t)
         abs_diff = diff.abs()
         flag = (abs_diff.data < (1. / sigma2)).float()
-        flag = Variable(flag)
         y = (flag * (sigma2 / 2.) * (diff ** 2) +
              (1 - flag) * (abs_diff - 0.5 / sigma2))
         return y.sum()
 
     def _fast_rcnn_loc_loss(self,pred_loc, gt_loc, gt_label, sigma):
-        in_weight = torch.zeros(gt_loc.shape).cuda(self.gpu)
         # Localization loss is calculated only for positive rois.
         # NOTE:  unlike origin implementation,
         # we don't need inside_weight and outside_weight, they can calculate by gt_label
         # 只有正样本参与计算loc的loss,负样本和忽略的样本的in_weight=0
-        in_weight[(gt_label > 0).view(-1, 1).expand_as(in_weight).cuda(self.gpu)] = 1
-        loc_loss = self._smooth_l1_loss(pred_loc, gt_loc, Variable(in_weight), sigma)
+        in_weight = torch.zeros(gt_loc.shape)
+        in_weight[(gt_label > 0).view(-1, 1).expand_as(in_weight)] = 1
+        in_weight = utils.totensor(in_weight)
+        loc_loss = self._smooth_l1_loss(pred_loc, gt_loc, in_weight, sigma)
         # Normalize by total number of negtive and positive rois.
         loc_loss /= (gt_label >= 0).sum().float()  # ignore gt_label==-1 for rpn_loss
         return loc_loss
@@ -362,13 +365,15 @@ class FasterRCNNVGG16(nn.Module):
             save_dict['optimizer'] = self.optimizer.state_dict()
 
         if save_path is None:
+            if not os.path.exists('checkpoints'):
+                os.mkdir('checkpoints')
             timestr = time.strftime('%m%d-%H%M')
             save_path = 'checkpoints/fasterrcnn_%s.pth' % timestr
 
         torch.save(save_dict, save_path)
         return save_path
 
-    def load(self, path, target_gpu=0, load_optimizer=False, load_opt=True, ):
+    def load(self, path, target_gpu=0, load_optimizer=True, load_opt=True, ):
         if not '/' in path:
             path = 'checkpoints/'+path
         state_dict = torch.load(path)
@@ -388,6 +393,35 @@ class FasterRCNNVGG16(nn.Module):
         if load_optimizer and 'optimizer' in state_dict:
             self.optimizer.load_state_dict(state_dict['optimizer'])
         return self
+
+if __name__ == '__main__':
+    from config import opt
+    from data.dataset import VOCBboxDataset
+    import random
+    model = FasterRCNNVGG16(opt)
+
+    # img = torch.randn((1,3,600,800))
+    # bbox = torch.from_numpy(np.asarray([[[114, 122, 274, 378,],
+    #                                     [  0,  74, 374, 427,]]]))
+    # label = torch.LongTensor([[1,5]])
+    # scale = 1.6
+    #
+    # model.train_step(img,bbox,label,scale)
+
+    # from torch.utils.data import DataLoader
+    # train_dataset = VOCBboxDataset(opt,train=True)
+    #
+    # index = random.randint(0,1000)
+    # oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
+    # img = img[np.newaxis,:,:,:]
+    # bbox = bbox[np.newaxis,:,:]
+    # label = label[np.newaxis,:]
+    # losses = model.train_step(img, bbox, label, scale)
+
+    model = vgg16_bn()
+    print(model)
+
+
 
 
 

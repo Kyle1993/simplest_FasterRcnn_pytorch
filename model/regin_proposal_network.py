@@ -104,7 +104,7 @@ class RegionProposalNetwork(nn.Module):
             proposal_creator_params=dict(),
     ):
         super(RegionProposalNetwork, self).__init__()
-        # 生成面积为[128,256,512],比例为[0.5,1,2]的9个base anchor，[9,4]
+        # 生成面积为[128,256,512],比例为[0.5,1,2]的9个base anchor,[9,4]
         self.anchor_base = generate_anchor_base(base_size=16,anchor_scales=anchor_scales, ratios=ratios)
         self.feat_stride = feat_stride
 
@@ -163,6 +163,7 @@ class RegionProposalNetwork(nn.Module):
         # x:[1,in_channel=512,hh,ww]
         n, _, hh, ww = x.shape
         # 枚举出feature_map上每个点对应原图的anchor，这里的原图是指transform之后的图像
+        # anchor:[hh*ww*9,4]
         anchor = self._enumerate_shifted_anchor(np.array(self.anchor_base),self.feat_stride, hh, ww)
 
         n_anchor = anchor.shape[0] // (hh * ww)     # len(ratios)*len(anchor_scales)=9
@@ -178,20 +179,20 @@ class RegionProposalNetwork(nn.Module):
 
         # 获得每个anchor的打分,这里为一个前景后景二分类,即是物体或不是物体
         # 这里为什么不只生成一个分数
-        # 这里改了一下源代码,score上加了softmax,虽然loss的计算会自带softmax,但是要用fg_scroe算roi,所以还是觉得家softmax好
         rpn_scores = self.score(h)
         rpn_scores = rpn_scores.permute(0, 2, 3, 1).contiguous()
-        rpn_scores_softmax = F.softmax(rpn_scores.view(n, hh, ww, n_anchor, 2),dim=4)
-        rpn_fg_scores = rpn_scores_softmax[:, :, :, :, 1].contiguous()
-        # 前景(是物体)概率:[1,9*hh*ww]
+        rpn_scores = rpn_scores.view(n, hh, ww, n_anchor, 2)
+        rpn_fg_scores = rpn_scores[:, :, :, :, 1].contiguous()
+        # 前景(是物体)概率:[1,hh,ww,9]
         rpn_fg_scores = rpn_fg_scores.view(n, -1)
         # 二分类概率:[1,9*hh*ww,2]
         rpn_scores = rpn_scores.view(n, -1, 2)
 
         # 这里n=1,所以只选取[0]
         # 通过proposcal_creator,根据IOU选取ROI
-        roi = self.proposcal_creator(rpn_locs[0].cpu().data.numpy(),
-            rpn_fg_scores[0].cpu().data.numpy(),anchor, img_size,scale=scale)
+        # 这里rpn_locs是[dx1,dy1,dx2,dy2],在proposcal_creator内会根据archor转化成bbox
+        # 这里的roi就是bbox通过筛选的结果[num_post_nms,4],是[x1,y1,x2,y2的形式]
+        roi = self.proposcal_creator(rpn_locs[0].cpu().data.numpy(),rpn_fg_scores[0].cpu().data.numpy(),anchor, img_size,scale=scale)
 
         # batch_index = i * np.ones((len(roi),), dtype=np.int32)
         # rois.append(roi)

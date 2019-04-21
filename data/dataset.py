@@ -146,17 +146,25 @@ if __name__ == '__main__':
     train_dataset = VOCBboxDataset(opt,train=True)
     train_dataloader = DataLoader(train_dataset,batch_size=1,shuffle=True)
 
-    index = 30
-    oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
-    print(oimg.shape)
-    print(oimg)
-    print(img.shape)
-    print(scale)
-    print(obbox)
-    print(bbox.shape)
-    print(label.shape)
-    print(flip)
-    dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,dataset_utils.bbox_inverse(bbox,img.shape[1:],flip,scale),label,)
+    for oimg, obbox, img,bbox,label,scale,flip in train_dataloader:
+        print(img.shape)
+        print(bbox.shape)
+        print(label.shape)
+        print(scale)
+        break
+
+    # index = 30
+    # oimg, obbox, img,bbox,label,scale,flip = train_dataset[index]
+    # print(oimg.shape)
+    # print(oimg)
+    # print(img.shape)
+    # print(scale)
+    # print(obbox)
+    # print(bbox.shape)
+    # print(label.shape)
+    # print(flip)
+    # dataset_utils.draw_pic(oimg,VOC_BBOX_LABEL_NAMES,dataset_utils.bbox_inverse(bbox,img.shape[1:],flip,scale),label,)
+    # dataset_utils.draw_pic(img,VOC_BBOX_LABEL_NAMES,bbox,label)
 
     # font = ImageFont.load_default()
     # image = Image.fromarray(np.uint8(oimg.transpose(1,2,0)))

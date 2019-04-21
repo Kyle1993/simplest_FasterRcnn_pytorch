@@ -12,7 +12,7 @@ def tonumpy(data):
         return tonumpy(data.data)
 
 
-def totensor(data, cuda=True):
+def totensor(data,):
     if isinstance(data, float):
         tensor = torch.FloatTensor([data])
     if isinstance(data, int):
@@ -23,7 +23,7 @@ def totensor(data, cuda=True):
         tensor = data.float()
     if isinstance(data, torch.autograd.Variable):
         tensor = data.data.float()
-    if cuda:
+    if opt.gpu>=0:
         tensor = tensor.cuda(opt.gpu)
     return tensor
 
@@ -351,6 +351,7 @@ def bbox_iou(bbox_a, bbox_b):
     if bbox_a.shape[1] != 4 or bbox_b.shape[1] != 4:
         raise IndexError
 
+    # cool!
     # top left
     tl = np.maximum(bbox_a[:, None, :2], bbox_b[:, :2])
     # bottom right
@@ -367,20 +368,21 @@ def nms(bbox,scores,threshold):
     x2 = bbox[:,2]
     y2 = bbox[:,3]
 
-    areas = (x2-x1+1)*(y2-y1+1)
+    areas = (x2-x1)*(y2-y1)
     orders = scores.argsort()[::-1]
     # keep为最后保留的边框
     keep = []
+
+    # 找出被包含在i内的bbox，并删除
+    def contain(box_id):
+        box = bbox[box_id]
+        return (box[0] >= x1[i] and box[1] >= y1[i] and box[2] <= x2[i] and box[3] <= y2[i])
 
     while orders.size > 0:
         # order[0]是当前分数最大的窗口，肯定保留
         i = orders[0]
         keep.append(i)
 
-        # 找出被包含在i内的bbox，并删除
-        def contain(box_id):
-            box = bbox[box_id]
-            return (box[0] >= x1[i] and box[1] >= y1[i] and box[2] <= x2[i] and box[3] <= y2[i])
         contain_box_id = list(filter(contain, orders[1:]))
         orders = np.setdiff1d(orders,contain_box_id)
 
@@ -397,8 +399,38 @@ def nms(bbox,scores,threshold):
         iou = overlap/(areas[i] + areas[orders[1:]] - overlap)
         # inds为所有与窗口i的iou值小于threshold值的窗口的index，其他窗口此次都被窗口i吸收
         idx = np.where(iou<=threshold)[0]
-        # order里面只保留与窗口i交叠面积小于threshold的那些窗口，由于ovr长度比order长度少1(不包含i)，所以inds+1对应到保留的窗口
+        # order里面只保留与窗口i交叠面积小于threshold的那些窗口，由于idx长度比order长度少1(不包含i)，所以inds+1对应到保留的窗口
         orders = orders[idx+1]
 
     return keep
+
+if __name__ == '__main__':
+    bbox = np.asarray([[0,0,100,100],
+                       [10,10,90,90],
+                       [20,20,120,120]])
+    scores = np.asarray([0.9,0.5,0.2])
+
+    x1 = bbox[:,0]
+    y1 = bbox[:,1]
+    x2 = bbox[:,2]
+    y2 = bbox[:,3]
+
+    areas = (x2-x1)*(y2-y1)
+
+    x1_t,y1_t,x2_t,y2_t = bbox[0]
+
+    x_lt = np.maximum(x1_t, x1)
+    y_lt = np.maximum(y1_t, y1)
+    x_rb = np.minimum(x2_t, x2)
+    y_rb = np.minimum(y2_t, y2)
+
+    w = np.maximum(0.0, x_rb - x_lt)
+    h = np.maximum(0.0, y_rb - y_lt)
+    overlap = h * w
+
+    iou = overlap / (areas[0] + areas - overlap)
+    print(iou)
+
+    keep = nms(bbox,scores,0.5)
+    print(keep)
 

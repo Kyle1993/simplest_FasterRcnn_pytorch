@@ -1,9 +1,10 @@
 import numpy as np
-from PIL import Image
 import random
 import torch
 from skimage import transform as sktsf
 from torchvision import transforms as tvtf
+from PIL import Image, ImageDraw, ImageFont
+
 
 def read_image(path, dtype=np.float32, color=True):
     """Read an image from a file.
@@ -326,8 +327,10 @@ def preprocess(img, min_size=600, max_size=1000):
     return pytorch_normalze(img), scale
 
 
+# 将原图reshape成规定大小
+# 随机翻转
+# 将bbox按比例缩放翻转
 def transform(img,bbox,label,min_size=600,max_size=1000):
-
     _, H, W = img.shape
     img,scale = preprocess(img, min_size, max_size)
     # _, o_H, o_W = img.shape
@@ -340,6 +343,7 @@ def transform(img,bbox,label,min_size=600,max_size=1000):
 
     return img, bbox, label, scale, filp
 
+# 将预测的bbox反向映射回原图
 def bbox_inverse(bbox,size,flip,scale):
     # inverse flip
     obbox = flip_bbox(bbox,size,x_flip=flip[0],y_flip=flip[1])
@@ -353,7 +357,6 @@ def bbox_inverse(bbox,size,flip,scale):
     return obbox
 
 def draw_pic(original_img,VOC_BBOX_LABEL_NAMES,target_bbox,target_label,predict_bbox=None,predict_label=None):
-    from PIL import Image,ImageDraw,ImageFont
     font = ImageFont.load_default()
     image = Image.fromarray(np.uint8(original_img.transpose(1,2,0)))
     draw = ImageDraw.Draw(image)

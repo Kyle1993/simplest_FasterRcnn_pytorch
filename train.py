@@ -5,16 +5,6 @@ from torch.utils.data import DataLoader
 
 from config import opt
 
-# use for debug https://github.com/WarBean/hyperboard
-if opt.use_hyperboard:
-    from hyperboard import Agent
-    agent = Agent(username='jlb', password='123', port=5005)
-    loss_record = agent.register({'loss':'total'}, 'loss', overwrite=True)
-    rpn_loc_loss = agent.register({'loss':'rpn_loc'}, 'loss', overwrite=True)
-    rpn_cls_loss = agent.register({'loss':'rpn_cls'}, 'loss', overwrite=True)
-    roi_loc_loss = agent.register({'loss':'roi_loc'}, 'loss', overwrite=True)
-    roi_cls_loss = agent.register({'loss':'roi_cls'}, 'loss', overwrite=True)
-
 
 model = FasterRCNNVGG16(opt)
 
@@ -43,21 +33,14 @@ for epoch in range(opt.epoch):
         ls[3] += losses.roi_cls_loss.item()
         ls[4] += losses.total_loss.item()
 
-        if global_step%record_step == 0:
+        if global_step % record_step == 0:
             ls_record[global_step] = ls/record_step
             ls = np.zeros((5))
             with open('losses_record.pkl','wb') as f:
                 pickle.dump(ls_record,f)
 
-            if opt.use_hyperboard:
-                agent.append(rpn_loc_loss, global_step, ls_record[global_step][0])
-                agent.append(rpn_cls_loss, global_step, ls_record[global_step][1])
-                agent.append(roi_loc_loss, global_step, ls_record[global_step][2])
-                agent.append(roi_cls_loss, global_step, ls_record[global_step][3])
-                agent.append(loss_record, global_step, ls_record[global_step][4])
 
-
-    if epoch == 2:
+    if epoch == 3:
         model.decay_lr(opt.lr_decay)
 
 model.save(save_optimizer=True)
