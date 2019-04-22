@@ -368,7 +368,7 @@ class FasterRCNNVGG16(nn.Module):
              (1 - flag) * (diff - 0.5))
         return y.sum()
 
-    def _rnp_loc_loss(self,pred_loc, gt_loc, gt_label):
+    def _rpn_loc_loss(self,pred_loc, gt_loc, gt_label):
         # Localization loss is calculated only for positive rois.
         # NOTE:  unlike origin implementation,
         # we don't need inside_weight and outside_weight, they can calculate by gt_label
