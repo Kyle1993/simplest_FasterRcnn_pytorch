@@ -1,4 +1,4 @@
-# Simplest implement of Faster Rcnn by Pytorch  
+# Simplest implement of FasterRCNN by Pytorch  
 
 Base on [chenyuntc/simple-faster-rcnn-pytorch](https://github.com/chenyuntc/simple-faster-rcnn-pytorch)  
 
