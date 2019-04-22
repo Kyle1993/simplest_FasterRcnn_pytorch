@@ -8,8 +8,6 @@ def tonumpy(data):
         return data
     if isinstance(data, torch.Tensor):
         return data.cpu().numpy()
-    if isinstance(data, torch.autograd.Variable):
-        return tonumpy(data.data)
 
 
 def totensor(data,):
@@ -21,25 +19,9 @@ def totensor(data,):
         tensor = torch.from_numpy(data).float()
     if isinstance(data, torch.Tensor):
         tensor = data.float()
-    if isinstance(data, torch.autograd.Variable):
-        tensor = data.data.float()
     if opt.gpu>=0:
         tensor = tensor.cuda(opt.gpu)
     return tensor
-
-# No longer needed in Pytorch 0.4+
-# def tovariable(data,cuda=True):
-#     if isinstance(data, np.ndarray):
-#         data = tovariable(totensor(data))
-#     if isinstance(data, torch.Tensor):
-#         data = torch.autograd.Variable(data.float())
-#     if isinstance(data, torch.autograd.Variable):
-#         pass
-#     else:
-#         raise ValueError("UnKnow data type: %s, input should be {np.ndarray,Tensor,Variable}" %type(data))
-#     if cuda:
-#         data = data.cuda(opt.gpu)
-#     return data
 
 def scalar(data):
     if isinstance(data, np.ndarray):

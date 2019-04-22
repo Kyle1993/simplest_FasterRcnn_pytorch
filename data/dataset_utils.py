@@ -353,10 +353,7 @@ def bbox_inverse(bbox,size,flip,scale):
     obbox = flip_bbox(bbox,size,x_flip=flip[0],y_flip=flip[1])
 
     # inverse resize
-    obbox[:, 0] = obbox[:, 0]/scale
-    obbox[:, 2] = obbox[:, 2]/scale
-    obbox[:, 1] = obbox[:, 1]/scale
-    obbox[:, 3] = obbox[:, 3]/scale
+    obbox  = obbox/scale
 
     return obbox
 

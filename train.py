@@ -39,7 +39,6 @@ for epoch in range(opt.epoch):
             with open('losses_record.pkl','wb') as f:
                 pickle.dump(ls_record,f)
 
-
     if epoch == 3:
         model.decay_lr(opt.lr_decay_rate)
 

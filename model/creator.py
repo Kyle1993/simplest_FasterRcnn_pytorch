@@ -33,7 +33,7 @@ class ProposalTargetCreator(object):
                  # pos_ratio=0.25, pos_iou_thresh=0.5,
                  # neg_iou_thresh_hi=0.5, neg_iou_thresh_lo=0.0
                  pos_ratio=0.5, pos_iou_thresh=0.5,
-                 neg_iou_thresh_hi=0.3, neg_iou_thresh_lo=0.1
+                 neg_iou_thresh_hi=0.5, neg_iou_thresh_lo=0.0
                  ):
         self.n_sample = n_sample
         self.pos_ratio = pos_ratio
@@ -41,9 +41,9 @@ class ProposalTargetCreator(object):
         self.neg_iou_thresh_hi = neg_iou_thresh_hi
         self.neg_iou_thresh_lo = neg_iou_thresh_lo  # NOTE: py-faster-rcnn默认的值是0.1
 
-    def __call__(self, roi, bbox, label,
-                 loc_normalize_mean,
-                 loc_normalize_std):
+    def __call__(self, roi, bbox, label,):
+                 # loc_normalize_mean,
+                 # loc_normalize_std):
         """Assigns ground truth to sampled proposals.
 
         This function samples total of :obj:`self.n_sample` RoIs
@@ -97,7 +97,7 @@ class ProposalTargetCreator(object):
         # # 这里要注意的是bbox区域也可以作为训练样本，所以这里将roi和bbox concat起来
         # roi = np.concatenate((roi, bbox), axis=0)
 
-        pos_roi_per_image = np.round(self.n_sample * self.pos_ratio)  # 采样的正样本数量
+        pos_max_num = int(np.round(self.n_sample * self.pos_ratio))  # 采样的正样本数量
         # 每个roi对应每个bbox的IOU
         iou = utils.bbox_iou(roi, bbox)
 
@@ -115,24 +115,19 @@ class ProposalTargetCreator(object):
         # Select foreground RoIs as those with >= pos_iou_thresh IoU.
         # 在大于IOU阈值的roi中选取正样本，为什么正样本比例设的这么低???,只有0.25
         pos_index = np.where(max_iou >= self.pos_iou_thresh)[0]
-        # print(len(pos_index))
-        pos_roi_per_this_image = int(min(pos_roi_per_image, pos_index.shape[0]))
-        if pos_index.shape[0] > 0:
-            pos_index = np.random.choice(
-                pos_index, size=pos_roi_per_this_image, replace=False)
-        # print(len(pos_index))
+        if len(pos_index) > pos_max_num:
+            pos_index = np.random.choice(pos_index, size=pos_max_num, replace=False)
+        pos_num = len(pos_index)
+        # print('ProposalTargetCreator pos index',len(pos_index))
 
         # Select background RoIs as those within
         # [neg_iou_thresh_lo, neg_iou_thresh_hi).
         # 在IOU区间内选择负样本,这里的iou区间是[0-0.5],我觉得0.5还挺高的???
         neg_index = np.where((max_iou < self.neg_iou_thresh_hi) & (max_iou >= self.neg_iou_thresh_lo))[0]
-        # print(len(neg_index))
-        neg_roi_per_this_image = self.n_sample - pos_roi_per_this_image
-        neg_roi_per_this_image = int(min(neg_roi_per_this_image, neg_index.size))
-        if neg_index.size > 0:
-            neg_index = np.random.choice(
-                neg_index, size=neg_roi_per_this_image, replace=False)
-        # print(len(neg_index))
+        neg_max_num = self.n_sample - pos_num
+        if len(neg_index) > neg_max_num:
+            neg_index = np.random.choice(neg_index, size=neg_max_num, replace=False)
+        # print('ProposalTargetCreator neg index',len(neg_index))
 
         # The indices that we're selecting (both positive and negative).
         # 正类保留分类,负类标签置0
@@ -140,11 +135,12 @@ class ProposalTargetCreator(object):
         gt_roi_label = gt_roi_label[keep_index]
         gt_roi_label[len(pos_index):] = 0  # negative labels --> 0
         sample_roi = roi[keep_index]
+        # print('ProposalTargetCreator',sample_roi.shape)
 
         # Compute offsets and scales to match sampled RoIs to the GTs.
         # 计算4个修正量作为位置回归的ground truth
         gt_roi_loc = utils.bbox2loc(sample_roi, bbox[gt_assignment[keep_index]])
-        gt_roi_loc = (gt_roi_loc - loc_normalize_mean) / loc_normalize_std
+        # gt_roi_loc = (gt_roi_loc - loc_normalize_mean) / loc_normalize_std
 
         # # debug
         # print('debug')
@@ -395,8 +391,7 @@ class ProposalCreator:
         self.n_test_post_nms = n_test_post_nms
         self.min_size = min_size
 
-    def __call__(self, loc, score,
-                 anchor, img_size, scale=1.):
+    def __call__(self, loc, score, anchor, img_size, scale=1.,training=True):
         """input should  be ndarray
         Propose RoIs.
 
@@ -432,7 +427,7 @@ class ProposalCreator:
 
         """
         # NOTE: when test, remember faster_rcnn.eval() to set self.parent_model.training = False
-        if self.parent_model.training:
+        if training:
             n_post_nms = self.n_train_post_nms
         else:
             n_post_nms = self.n_test_post_nms
@@ -444,8 +439,8 @@ class ProposalCreator:
 
         # Clip predicted boxes to image.
         # 将roi的边界clip成原始图像边界
-        roi[:, slice(0, 4, 2)] = np.clip(roi[:, slice(0, 4, 2)], 0, img_size[0])
-        roi[:, slice(1, 4, 2)] = np.clip(roi[:, slice(1, 4, 2)], 0, img_size[1])
+        roi[:, 0::2] = np.clip(roi[:, 0::2], 0, img_size[0])
+        roi[:, 1::2] = np.clip(roi[:, 1::2], 0, img_size[1])
 
         # Remove predicted boxes with either height or width < threshold.
         # 删除长或宽小于minsize的roi

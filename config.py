@@ -14,7 +14,7 @@ class Config:
     min_size = 600  # image resize
     max_size = 1000 # image resize
     num_workers = 8
-    gpu = 1
+    gpu = 0
     test_num_workers = 8
     n_class = 20+1
 
@@ -26,7 +26,7 @@ class Config:
     # 0.0005 in origin paper but 0.0001 in tf-faster-rcnn
     weight_decay = 0.0005
     lr_decay_rate = 0.1  # 1e-3 -> 1e-4
-    lr = 5e-4
+    lr = 1e-3
 
     # for debug
     # use_hyperboard = False
@@ -39,7 +39,7 @@ class Config:
     epoch = 6
 
 
-    use_adam = True  # Use Adam optimizer
+    use_adam = False  # Use Adam optimizer
     use_drop = False # use dropout in RoIHead
     # debug
     # debug_file = '/tmp/debugf'

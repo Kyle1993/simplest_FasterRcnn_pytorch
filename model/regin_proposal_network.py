@@ -119,7 +119,7 @@ class RegionProposalNetwork(nn.Module):
         self.normal_init(self.score, 0, 0.01)
         self.normal_init(self.loc, 0, 0.01)
 
-    def forward(self, x, img_size, scale=1.):
+    def forward(self, x, img_size, scale=1., training=True):
         """Forward Region Proposal Network.
 
         Here are notations.
@@ -167,7 +167,6 @@ class RegionProposalNetwork(nn.Module):
         # anchor:[hh*ww*9,4],这里的anchor是对应原始图片的值
         anchor = self._enumerate_shifted_anchor(np.array(self.anchor_base),self.feat_stride, hh, ww)
 
-        n_anchor = anchor.shape[0] // (hh * ww)     # len(ratios)*len(anchor_scales)=9
         # 按照原文的说法,这里再做一次卷积,3*3的卷积不会改变feature_map的大小,所以上面计算出的所有anchor依然适用
         # 猜测这样做的目的：使得原始feature上每个3*3的框对应原图的9个anchor,增强鲁棒性？
         # h:[1,mid_channel=512,hh,ww]
@@ -192,8 +191,8 @@ class RegionProposalNetwork(nn.Module):
         # 这里n=1,所以只选取[0]
         # 通过proposcal_creator,根据IOU选取ROI
         # 这里rpn_locs是[dx1,dy1,dx2,dy2],在proposcal_creator内会根据archor转化成bbox
-        # 这里的roi就是bbox通过筛选的结果[num_post_nms,4],是[x1,y1,x2,y2的形式]
-        roi = self.proposcal_creator(rpn_locs[0].cpu().data.numpy(),rpn_scores[0].cpu().data.numpy(),anchor, img_size,scale=scale)
+        # 这里的roi就是bbox通过筛选的结果[num_pos_nms,4],是[x1,y1,x2,y2的形式]
+        roi = self.proposcal_creator(rpn_locs[0].cpu().detach().numpy(),rpn_scores[0].cpu().detach().numpy(),anchor, img_size,scale=scale,training=training)
 
         # batch_index = i * np.ones((len(roi),), dtype=np.int32)
         # rois.append(roi)
