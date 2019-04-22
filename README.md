@@ -8,6 +8,7 @@ Base on [chenyuntc/simple-faster-rcnn-pytorch](https://github.com/chenyuntc/simp
 * rpn的score输出只有一维概率，loss改成BCE  
 * rnp_loc_loss 直计算正样本计算  
 * extractor&rpn 和 roi_head分开训练，先训练若干epoch的extractor&rpn  
+
 5. make it fit Pytorch 0.4+  
 1. 用pytorch自带的AdaptiveMaxPool2d替换原来ROIPool2D，代码更简洁易懂,但是慢！！！(https://www.cnblogs.com/king-lps/p/9026798.html)  
 6. 删除了cupy计算MNS的部分,纯numpy实现,代码更简洁易懂,但是 慢！！！  
