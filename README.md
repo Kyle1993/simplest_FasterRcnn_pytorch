@@ -21,5 +21,6 @@ Adam效果比SDG差
 
 
 TODO:  
+still have some bugs, can't predict correctly  
 支持多batch_size  
 添加Focal Loss  
